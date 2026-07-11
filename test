@@ -1,0 +1,26 @@
+#!/bin/sh
+# chy test harness.
+#
+# Runs every tests/NNN-*.sh in order, a test passes when it exits 0.
+# Output shows on failure only, exit 0 means the suite passed.
+
+set -u
+cd "$(dirname "$0")" || exit 2
+
+fails=0 count=0
+
+for t in tests/[0-9]*.sh; do
+    [ -e "$t" ] || { echo "error: no tests found" >&2; exit 2; }
+    count=$((count + 1))
+    if out=$(sh "$t" 2>&1); then
+        echo "PASS $t"
+    else
+        fails=$((fails + 1))
+        echo "FAIL $t"
+        printf '%s\n' "$out" | sed 's/^/       /'
+    fi
+done
+
+echo "----------------------------------------"
+echo "$((count - fails))/$count passed"
+[ "$fails" -eq 0 ]
