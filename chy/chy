@@ -1,0 +1,26 @@
+#!/bin/sh
+# chy. A tiny package manager for hand-built Linux systems.
+#
+# One file. POSIX sh. Readable in one sitting. The state is the filesystem.
+# $CHY_ROOT defines the world; nothing else knows where things live.
+#
+# Stub: only the version verb for now.
+
+CHY_VERSION=0.0.0
+
+usage() {
+    cat <<EOF
+chy $CHY_VERSION. Nothing here yet but the version verb.
+
+usage:
+  chy version    print the version and exit
+EOF
+}
+
+case "${1-}" in
+    version)      printf '%s\n' "$CHY_VERSION" ;;
+    ''|-h|--help) usage ;;
+    *)            printf 'chy: unknown verb: %s\n' "$1" >&2
+                  usage >&2
+                  exit 1 ;;
+esac
