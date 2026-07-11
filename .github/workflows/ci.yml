@@ -1,0 +1,38 @@
+# CI: shellcheck + line ceiling on chy, then the test suite on Void.
+
+name: ci
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    name: shellcheck + line ceiling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck, POSIX mode
+        run: shellcheck --shell=sh chy/chy test tests/*.sh
+
+      - name: line ceiling, 1500
+        run: |
+          max=1500
+          lines=$(wc -l < chy/chy)
+          echo "chy is $lines lines (ceiling: $max)"
+          [ "$lines" -le "$max" ]
+
+  tests:
+    name: test suite (Void glibc)
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/void-linux/void-glibc-full:latest
+    steps:
+      - name: prepare container
+        run: xbps-install -Sy git ca-certificates || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates; }
+
+      - uses: actions/checkout@v4
+
+      - name: run the suite
+        run: sh ./test
