@@ -4,8 +4,8 @@ set -eu
 cd "$(dirname "$0")/.." || exit 2
 
 v=$(sh chy/chy version)
-if [ "$v" != "0.0.0" ]; then
-    echo "expected version 0.0.0, got: $v"
+if [ "$v" != "0.1.0" ]; then
+    echo "expected version 0.1.0, got: $v"
     exit 1
 fi
 
