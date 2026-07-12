@@ -4,23 +4,564 @@
 # One file. POSIX sh. Readable in one sitting. The state is the filesystem.
 # $CHY_ROOT defines the world; nothing else knows where things live.
 #
-# Stub: only the version verb for now.
+# install, remove, list. Sources are fetched and verified, built
+# into store/<name>-<version>/, linked into the usr/ symlink farm, and
+# recorded under db/installed/. No dependency resolution yet - the caller
+# supplies install order.
 
-CHY_VERSION=0.0.0
+CHY_VERSION=0.1.0
+set -u
+
+# --------------------------------------------------------------- output --
+# Every line chy itself prints follows one grammar: progress and
+# completion on stdout, warnings and errors on stderr, all "chy: <name>:".
+
+say() { printf 'chy: %s: %s\n' "$1" "$2"; }
+warn() { printf 'chy: %s: warning: %s\n' "$1" "$2" >&2; }
+err() { printf 'chy: %s: error: %s\n' "$1" "$2" >&2; }
+fail() { err "$1" "$2"; exit 1; }
 
 usage() {
     cat <<EOF
-chy $CHY_VERSION. Nothing here yet but the version verb.
+chy $CHY_VERSION - a tiny package manager for hand-built Linux systems
 
 usage:
-  chy version    print the version and exit
+  chy install name...   fetch, verify, build, and link packages
+  chy remove name...    unlink packages and delete their store entries
+  chy list [name...]    list installed packages
+  chy version           print chy's version
+
+\$CHY_ROOT selects the root (default: \$HOME/.chy).
 EOF
 }
 
-case "${1-}" in
+# ----------------------------------------------------------- validation --
+# Package names match [a-z0-9][a-z0-9+._-]*; versions and revisions match
+# [A-Za-z0-9._+]+ (no hyphen, so store/<name>-<version> parses cleanly).
+
+valid_name() {
+    case $1 in ''|[!a-z0-9]*) return 1 ;; esac
+    case ${1#?} in *[!a-z0-9+._-]*) return 1 ;; *) return 0 ;; esac
+}
+
+valid_version() {
+    case $1 in ''|*[!A-Za-z0-9._]*) return 1 ;; *) return 0 ;; esac
+}
+
+valid_sha256() {
+    [ "${#1}" -eq 64 ] || return 1
+    case $1 in *[!0-9a-f]*) return 1 ;; *) return 0 ;; esac
+}
+
+# The root must be absolute, with no whitespace and no . or .. components;
+# trailing slashes are stripped. Anything else is refused at startup.
+bad_root() {
+    printf 'chy: invalid CHY_ROOT %s: %s\n' "${CHY_ROOT:-(empty)}" "$1" >&2
+    exit 2
+}
+
+check_root() {
+    [ -n "${CHY_ROOT:-}" ] || CHY_ROOT=${HOME:-}/.chy
+    while [ "${CHY_ROOT%/}" != "$CHY_ROOT" ]; do CHY_ROOT=${CHY_ROOT%/}; done
+    case $CHY_ROOT in /*) ;; *) bad_root 'not an absolute path' ;; esac
+    case $CHY_ROOT in *[[:space:]]*) bad_root 'contains whitespace' ;; esac
+    case $CHY_ROOT/ in */./*|*/../*) bad_root 'has . or .. components' ;; esac
+}
+
+# A tool is checked at the momnet it is needed.
+require() { # require <name> <tool>
+    command -v "$2" >/dev/null 2>&1 || fail "$1" "missing tool: $2"
+}
+
+# The significant lines of a list-valued recipe file: blank lines and
+# lines starting with '#' are ignored.
+sig_lines() {
+    while IFS= read -r sl_line || [ -n "$sl_line" ]; do
+        case $sl_line in ''|'#'*) continue ;; esac
+        case $sl_line in *[![:space:]]*) printf '%s\n' "$sl_line" ;; esac
+    done <"$1"
+}
+
+first_field() { # print the first whitespace-separated field of $1
+    ff_first=
+    read -r ff_first _ <<EOF || :
+$1
+EOF
+    printf '%s\n' "$ff_first"
+}
+
+sha_of() { # print the sha256 digest of a file
+    sha_out=$(sha256sum "$1") || return 1
+    printf '%s\n' "${sha_out%%[[:space:]]*}"
+}
+
+# -------------------------------------------------------------- recipes --
+# Validate recipes/<name>/ completely and set R_DIR, R_VER, R_REV. Any
+# invalidity fails the install before any fetching begins.
+recipe_check() { # recipe_check <name>
+    R_DIR=$CHY_ROOT/recipes/$1
+    [ -d "$R_DIR" ] || fail "$1" "unknown package: no recipe at recipes/$1"
+    for rc_f in version sources checksums build; do
+        [ -f "$R_DIR/$rc_f" ] || fail "$1" "recipe missing required file: $rc_f"
+    done
+
+    # kind: absent means source; nothing else is accepted yet.
+    if [ -f "$R_DIR/kind" ]; then
+        rc_kind=
+        read -r rc_kind <"$R_DIR/kind" || :
+        [ "$rc_kind" = source ] || fail "$1" "unsupported kind: ${rc_kind:-(empty)}"
+    fi
+
+    # version: one line, "<version>" or "<version> <revision>".
+    R_VER='' R_REV=''
+    read -r R_VER R_REV <"$R_DIR/version" || :
+    [ -n "$R_REV" ] || R_REV=1
+    valid_version "$R_VER" || fail "$1" "invalid version: '$R_VER'"
+    valid_version "$R_REV" || fail "$1" "invalid revision: '$R_REV'"
+
+    # sources and checksums pair line for line, by ordinal.
+    rc_nsrc=$(( $(sig_lines "$R_DIR/sources" | wc -l) ))
+    rc_nsum=$(( $(sig_lines "$R_DIR/checksums" | wc -l) ))
+    [ "$rc_nsrc" -gt 0 ] || fail "$1" "sources lists no sources"
+    [ "$rc_nsrc" -eq "$rc_nsum" ] ||
+        fail "$1" "sources/checksums line counts differ ($rc_nsrc vs $rc_nsum)"
+
+    sig_lines "$R_DIR/checksums" | while IFS= read -r rc_line; do
+        valid_sha256 "$(first_field "$rc_line")" || exit 1
+    done || fail "$1" "checksums must be lowercase sha256 hex digests"
+    # FIXME: names the recipe but not which checksums line is bad
+
+    # Every source line needs a filename; no two lines can share one.
+    sig_lines "$R_DIR/sources" | while IFS= read -r rc_line; do
+        rc_url=$(first_field "$rc_line")
+        [ -n "${rc_url##*/}" ] || exit 1
+    done || fail "$1" "a sources line has no usable filename"
+    rc_dup=$(
+        sig_lines "$R_DIR/sources" | while IFS= read -r rc_line; do
+            rc_url=$(first_field "$rc_line")
+            printf '%s\n' "${rc_url##*/}"
+        done | LC_ALL=C sort | uniq -d
+    )
+    [ -z "$rc_dup" ] || fail "$1" "duplicate source filename: $rc_dup"
+}
+
+# ---------------------------------------------------------------- fetch --
+fetch_url() { # fetch_url <name> <url> <outfile>
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL -o "$3" -- "$2"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$3" -- "$2"
+    else
+        fail "$1" 'missing tool: curl or wget'
+    fi
+}
+
+# One source line: a verified cache hit is used as-is; otherwise the
+# line's URLs are walked in order - download, verify, on mismatch delete
+# and advance - so a corrupt primary degrades to the mirror.
+fetch_source() { # fetch_source <name> <sha256> <source line>
+    fs_file=$(first_field "$3")
+    fs_file=${fs_file##*/}
+    fs_cache=$CHY_ROOT/cache/$fs_file
+    say "$1" "fetch $fs_file"
+    require "$1" sha256sum
+    if [ -f "$fs_cache" ] && [ "$(sha_of "$fs_cache")" = "$2" ]; then
+        return 0
+    fi
+    rm -f "$fs_cache"
+    mkdir -p "$CHY_ROOT/cache"
+    fs_rest=$3 fs_got='(nothing downloaded)'
+    while [ -n "$fs_rest" ]; do
+        fs_url=${fs_rest%%[[:space:]]*}
+        if [ "$fs_url" = "$fs_rest" ]; then
+            fs_rest=
+        else
+            fs_rest=${fs_rest#*[[:space:]]}
+        fi
+        [ -n "$fs_url" ] || continue
+        if fetch_url "$1" "$fs_url" "$fs_cache"; then
+            fs_got=$(sha_of "$fs_cache")
+            [ "$fs_got" = "$2" ] && return 0
+        else
+            fs_got='(download failed)'
+        fi
+        rm -f "$fs_cache"
+    done
+    fail "$1" "checksum mismatch for $fs_file: expected $2, got $fs_got"
+}
+
+# Every source is fetched and verified before the build dir is prepared.
+fetch_all() { # fetch_all <name>
+    mkdir -p "$CHY_ROOT/build"
+    sig_lines "$R_DIR/sources"   >"$CHY_ROOT/build/srcs"
+    sig_lines "$R_DIR/checksums" >"$CHY_ROOT/build/sums"
+    while IFS= read -r fa_line <&3 && IFS= read -r fa_sum <&4; do
+        fetch_source "$1" "$(first_field "$fa_sum")" "$fa_line"
+    done 3<"$CHY_ROOT/build/srcs" 4<"$CHY_ROOT/build/sums"
+}
+
+# ------------------------------------------------------------ build dir --
+is_archive() {
+    case $1 in *.tar.gz|*.tgz|*.tar.xz|*.tar.bz2) return 0 ;; *) return 1 ;; esac
+}
+
+# extract (known archives) or copy (anything else) one fetched source
+# into the build dir.
+stage_source() { # stage_source <name> <filename> <dir>
+    ss_cache=$CHY_ROOT/cache/$2
+    if is_archive "$2"; then
+        require "$1" tar
+        tar -xf "$ss_cache" -C "$3" || fail "$1" "cannot extract $2"
+    else
+        cp "$ss_cache" "$3/" || fail "$1" "cannot copy $2 into the build dir"
+    fi
+}
+
+# If extracting the first source yielded exactly one top-level entry -
+# dotfiles included - and it is a directory, hoist its contents up one
+# level so ./configure works from the top.
+hoist() { # hoist <dir>
+    h_count=0 h_only=
+    for h_e in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        { [ -e "$h_e" ] || [ -L "$h_e" ]; } || continue
+        h_count=$((h_count + 1)) h_only=$h_e
+    done
+    if [ "$h_count" -ne 1 ] || [ ! -d "$h_only" ] || [ -L "$h_only" ]; then
+        return 0
+    fi
+    mv "$h_only" "$1/.chy-hoist" || return 1
+    for h_e in "$1/.chy-hoist"/* "$1/.chy-hoist"/.[!.]* "$1/.chy-hoist"/..?*; do
+        { [ -e "$h_e" ] || [ -L "$h_e" ]; } || continue
+        mv "$h_e" "$1/" || return 1
+    done
+    rmdir "$1/.chy-hoist"
+}
+
+# wipe scratch, stage every source (only the first gets hoisted), then
+# apply patches/*.patch and *.diff as one list, byte order.
+prepare_build() { # prepare_build <name>
+    WORK=$CHY_ROOT/build/work
+    DEST=$CHY_ROOT/build/dest
+    rm -rf "$CHY_ROOT/build"
+    mkdir -p "$WORK" "$DEST"
+
+    sig_lines "$R_DIR/sources" >"$CHY_ROOT/build/srcs"
+    pb_first=1
+    while IFS= read -r pb_line; do
+        pb_file=$(first_field "$pb_line")
+        pb_file=${pb_file##*/}
+        stage_source "$1" "$pb_file" "$WORK"
+        if [ "$pb_first" -eq 1 ] && is_archive "$pb_file"; then
+            hoist "$WORK" || fail "$1" "cannot hoist $pb_file"
+        fi
+        pb_first=0
+    done <"$CHY_ROOT/build/srcs"
+
+    for pb_p in "$R_DIR/patches/"*.patch "$R_DIR/patches/"*.diff; do
+        [ -e "$pb_p" ] || continue
+        printf '%s\n' "${pb_p##*/}"
+    done | LC_ALL=C sort >"$CHY_ROOT/build/patchlist"
+    while IFS= read -r pb_p; do
+        require "$1" patch
+        say "$1" "apply $pb_p"
+        # TODO: -p1 is hardcoded; a few void patches want -p0 (libffi)
+        (cd "$WORK" && patch -p1 <"$R_DIR/patches/$pb_p") ||
+            fail "$1" "patch failed to apply: $pb_p"
+    done <"$CHY_ROOT/build/patchlist"
+}
+
+# ---------------------------------------------------------------- build --
+# sh recipes/<name>/build <destdir> <version>, cwd the prepared build
+# dir, with the environment. A nonzero exit aborts the install.
+run_build() { # run_build <name>
+    say "$1" "build $1-$R_VER"
+    (
+        cd "$WORK" || exit 1
+        CHY_PREFIX=$CHY_ROOT/usr
+        PATH=$CHY_PREFIX/bin:$PATH
+        CPPFLAGS="${CPPFLAGS:+$CPPFLAGS }-I$CHY_PREFIX/include"
+        LDFLAGS="${LDFLAGS:+$LDFLAGS }-L$CHY_PREFIX/lib -Wl,-rpath,$CHY_PREFIX/lib"
+        PKG_CONFIG_PATH="$CHY_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        export CHY_ROOT CHY_PREFIX PATH CPPFLAGS LDFLAGS PKG_CONFIG_PATH
+        exec sh "$CHY_ROOT/recipes/$1/build" "$DEST" "$R_VER"
+    ) || fail "$1" "build failed"
+}
+
+# ------------------------------------------------------------ normalize --
+# The build staged a DESTDIR image of the real prefix at $DEST$CHY_ROOT.
+# Check it and normalize it, still in scratch, to a $CHY_ROOT-relative
+# tree at $NORM. On failure the root is untouched.
+normalize() { # normalize <name>
+    NORM=$CHY_ROOT/build/pkg
+    n_bad=$CHY_ROOT/build/norm-failed
+    rm -f "$n_bad"
+    require "$1" readlink
+
+    find "$DEST" \( -type f -o -type l \) -print | while IFS= read -r n_p; do
+        case $n_p in
+            "$DEST$CHY_ROOT/"*) ;;
+            *) err "$1" "staged outside the prefix: ${n_p#"$DEST"}"
+                : >"$n_bad" ;;
+        esac
+    done
+    [ ! -e "$n_bad" ] || fail "$1" "build staged files outside \$CHY_ROOT"
+
+    if [ -z "$(find "$DEST$CHY_ROOT" \( -type f -o -type l \) -print 2>/dev/null)" ]; then
+        fail "$1" "build installed nothing"
+    fi
+
+    find "$DEST" -type l -print | while IFS= read -r n_p; do
+        n_t=$(readlink "$n_p")
+        case $n_t in
+            "$DEST"*)
+                err "$1" "symlink baked with the staging path: ${n_p#"$DEST$CHY_ROOT/"} -> $n_t"
+                : >"$n_bad" ;;
+        esac
+    done
+    [ ! -e "$n_bad" ] || fail "$1" "symlink targets baked with \$1 (DESTDIR)"
+
+    mv "$DEST$CHY_ROOT" "$NORM" || fail "$1" "cannot normalize the staged tree"
+}
+
+# -------------------------------------------------------------- linking --
+# A farm symlink is owned by <name> iff the path component of its target
+# right after store/ is exactly <name>.
+owner_of() { # owner_of <link>: print the owning component, if any
+    oo_t=$(readlink "$1") || return 0
+    case $oo_t in
+        store/*)   oo_t=${oo_t#store/} ;;
+        */store/*) oo_t=${oo_t#*/store/} ;;
+        *)         return 0 ;;
+    esac
+    printf '%s\n' "${oo_t%%/*}"
+}
+
+updots() { # print ../ once per directory level of a relative path
+    ud_p=$1 ud_u=
+    while [ "${ud_p#*/}" != "$ud_p" ]; do
+        ud_p=${ud_p#*/}
+        ud_u=../$ud_u
+    done
+    printf '%s\n' "$ud_u"
+}
+
+# Conflicts are found from the normalized tree before the store or farm
+# is touched: the whole install links or none of it does. A needed file
+# path may only be free or our own symlink; a needed directory path may
+# only be free or a real directory.
+conflict_scan() { # conflict_scan <name>
+    LIST=$CHY_ROOT/build/files
+    (cd "$NORM" && find . \( -type f -o -type l \) -print) |
+        sed 's|^\./||' | LC_ALL=C sort >"$LIST"
+
+    while IFS= read -r cs_p; do
+        cs_d=$cs_p
+        while [ "${cs_d%/*}" != "$cs_d" ]; do
+            cs_d=${cs_d%/*}
+            printf '%s\n' "$cs_d"
+        done
+    done <"$LIST" | LC_ALL=C sort -u >"$CHY_ROOT/build/dirs"
+
+    cs_bad=0
+    while IFS= read -r cs_d; do
+        cs_f=$CHY_ROOT/$cs_d
+        if [ -L "$cs_f" ]; then
+            cs_own=$(owner_of "$cs_f")
+            err "$1" "conflict: $cs_d is a symlink${cs_own:+ (owned by $cs_own)}, needed as a directory"
+            cs_bad=1
+        elif [ -e "$cs_f" ] && [ ! -d "$cs_f" ]; then
+            err "$1" "conflict: $cs_d exists and is not a directory"
+            cs_bad=1
+        fi
+    done <"$CHY_ROOT/build/dirs"
+
+    while IFS= read -r cs_p; do
+        cs_f=$CHY_ROOT/$cs_p
+        if [ -L "$cs_f" ]; then
+            cs_own=$(owner_of "$cs_f")
+            if [ "$cs_own" != "$1" ]; then
+                err "$1" "conflict: $cs_p${cs_own:+ (owned by $cs_own)}"
+                cs_bad=1
+            fi
+        elif [ -e "$cs_f" ]; then
+            err "$1" "conflict: $cs_p"
+            cs_bad=1
+        fi
+    done <"$LIST"
+
+    [ "$cs_bad" -eq 0 ] || fail "$1" "conflicts found; nothing was linked"
+}
+
+# store/<name>-<version> must be free or a replaceable real directory and
+# store/<name> free or a symlink - anything else is a name/version
+# collision, and chy fails rather than guessing.
+shape_check() { # shape_check <name>
+    sc_e=$CHY_ROOT/store/$1-$R_VER
+    if [ -L "$sc_e" ] || { [ -e "$sc_e" ] && [ ! -d "$sc_e" ]; }; then
+        fail "$1" "store/$1-$R_VER exists and is not a package directory"
+    fi
+    sc_a=$CHY_ROOT/store/$1
+    if [ -e "$sc_a" ] && [ ! -L "$sc_a" ]; then
+        fail "$1" "store/$1 exists and is not an alias symlink"
+    fi
+}
+
+# Make the store entry visible: real directories, then one relative
+# symlink per file, pointing through the store/<name> alias.
+link_farm() { # link_farm <name>
+    while IFS= read -r lf_p; do
+        lf_d=${lf_p%/*}
+        [ "$lf_d" = "$lf_p" ] || mkdir -p "$CHY_ROOT/$lf_d"
+        rm -f "$CHY_ROOT/$lf_p"
+        ln -s "$(updots "$lf_p")store/$1/$lf_p" "$CHY_ROOT/$lf_p" ||
+            fail "$1" "cannot link $lf_p"
+    done <"$LIST"
+}
+
+# The db entry is written last; its presence means "installed".
+write_db() { # write_db <name>
+    wd_db=$CHY_ROOT/db/installed/$1
+    rm -rf "$wd_db"
+    mkdir -p "$wd_db"
+    printf '%s %s\n' "$R_VER" "$R_REV" >"$wd_db/version"
+    cp "$LIST" "$wd_db/manifest"
+    [ ! -f "$R_DIR/depends" ] || cp "$R_DIR/depends" "$wd_db/depends"
+}
+
+# --------------------------------------------------------------- remove --
+# Prune directories that became empty, walking one unlinked path's parent
+# chain upward; $CHY_ROOT's top-level entries themselves are never removed.
+prune_up() { # prune_up <relative path>
+    pr_d=$1
+    while [ "${pr_d%/*}" != "$pr_d" ]; do
+        pr_d=${pr_d%/*}
+        case $pr_d in
+            */*) rmdir "$CHY_ROOT/$pr_d" 2>/dev/null || return 0 ;;
+            *)   return 0 ;;
+        esac
+    done
+}
+
+# Unlink every manifest path that is still a symlink owned by the
+# package; anything missing or replaced gets a warning and is left alone.
+unlink_links() { # unlink_links <name>
+    ul_m=$CHY_ROOT/db/installed/$1/manifest
+    [ -f "$ul_m" ] || return 0
+    require "$1" readlink
+    while IFS= read -r ul_p; do
+        [ -n "$ul_p" ] || continue
+        ul_f=$CHY_ROOT/$ul_p
+        if [ -L "$ul_f" ]; then
+            if [ "$(owner_of "$ul_f")" = "$1" ]; then
+                rm -f "$ul_f"
+                prune_up "$ul_p"
+            else
+                warn "$1" "$ul_p is not owned by $1; left in place"
+            fi
+        elif [ -e "$ul_f" ]; then
+            warn "$1" "$ul_p was replaced; left in place"
+        else
+            warn "$1" "$ul_p is missing"
+        fi
+    done <"$ul_m"
+}
+
+do_remove() { # do_remove <name> - the package must be installed
+    dr_db=$CHY_ROOT/db/installed/$1
+    [ -f "$dr_db/version" ] || fail "$1" "db entry is corrupt: no version file"
+    dr_ver='' dr_rev=''
+    read -r dr_ver dr_rev <"$dr_db/version" || :
+    [ -n "$dr_ver" ] || fail "$1" "db entry is corrupt: empty version file"
+    unlink_links "$1"
+    rm -f "$CHY_ROOT/store/$1"
+    rm -rf "$CHY_ROOT/store/$1-$dr_ver"
+    rm -rf "$dr_db"
+    say "$1" "removed $dr_ver $dr_rev"
+}
+
+# -------------------------------------------------------------- install --
+# The pipeline, in order. Any failure up to and including the
+# conflict scan leaves the root exactly as it was: a failed rebuild never
+# costs the working install.
+do_install() { # do_install <name>
+    valid_name "$1" || fail "$1" "invalid package name"
+    recipe_check "$1"                              # 1
+    fetch_all "$1"                                 # 2
+    prepare_build "$1"                             # 3
+    run_build "$1"                                 # 4
+    normalize "$1"                                 # 5
+    conflict_scan "$1"                             # 6
+    shape_check "$1"
+    if [ -d "$CHY_ROOT/db/installed/$1" ]; then    # 7: reinstall - the old
+        do_remove "$1"                             #    install goes only now
+    fi
+    say "$1" "link $1-$R_VER"
+    mkdir -p "$CHY_ROOT/store"
+    rm -rf "$CHY_ROOT/store/$1-$R_VER"
+    mv "$NORM" "$CHY_ROOT/store/$1-$R_VER" ||      # 8: place the store entry
+        fail "$1" "cannot place the store entry"
+    rm -f "$CHY_ROOT/store/$1"
+    ln -s "$1-$R_VER" "$CHY_ROOT/store/$1" ||      # 9: point the alias
+        fail "$1" "cannot point the alias"
+    link_farm "$1"                                 # 10
+    write_db "$1"                                  # 11
+    say "$1" "installed $R_VER $R_REV"
+}
+
+# ---------------------------------------------------------------- verbs --
+cmd_install() {
+    [ "$#" -gt 0 ] || { usage >&2; exit 2; }
+    for ci_n in "$@"; do
+        do_install "$ci_n"
+    done
+}
+
+cmd_remove() {
+    [ "$#" -gt 0 ] || { usage >&2; exit 2; }
+    for cr_n in "$@"; do
+        valid_name "$cr_n" || fail "$cr_n" "invalid package name"
+        [ -d "$CHY_ROOT/db/installed/$cr_n" ] || fail "$cr_n" "not installed"
+        do_remove "$cr_n"
+    done
+}
+
+list_one() { # print "<name> <version> <revision>" from the db
+    lo_v='' lo_r=''
+    read -r lo_v lo_r <"$CHY_ROOT/db/installed/$1/version" || :
+    printf '%s %s %s\n' "$1" "$lo_v" "$lo_r"
+}
+
+cmd_list() {
+    if [ "$#" -eq 0 ]; then
+        for cl_d in "$CHY_ROOT/db/installed/"*; do
+            [ -f "$cl_d/version" ] || continue
+            list_one "${cl_d##*/}"
+        done | LC_ALL=C sort
+        exit 0
+    fi
+    cl_bad=0
+    for cl_n in "$@"; do
+        if ! valid_name "$cl_n"; then
+            err "$cl_n" "invalid package name"
+            cl_bad=1
+        elif [ -f "$CHY_ROOT/db/installed/$cl_n/version" ]; then
+            list_one "$cl_n"
+        else
+            err "$cl_n" "not installed"
+            cl_bad=1
+        fi
+    done
+    exit "$cl_bad"
+}
+
+# ------------------------------------------------------------- dispatch --
+check_root
+
+case ${1-} in
     version)      printf '%s\n' "$CHY_VERSION" ;;
     ''|-h|--help) usage ;;
-    *)            printf 'chy: unknown verb: %s\n' "$1" >&2
-                  usage >&2
-                  exit 1 ;;
+    install)      shift; cmd_install "$@" ;;
+    remove)       shift; cmd_remove "$@" ;;
+    list)         shift; cmd_list "$@" ;;
+    *)            usage >&2; exit 2 ;;
 esac
