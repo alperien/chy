@@ -68,7 +68,7 @@ check_root() {
     case $CHY_ROOT/ in */./*|*/../*) bad_root 'has . or .. components' ;; esac
 }
 
-# A tool is checked at the momnet it is needed.
+# A tool is checked at the moment it is needed.
 require() { # require <name> <tool>
     command -v "$2" >/dev/null 2>&1 || fail "$1" "missing tool: $2"
 }
