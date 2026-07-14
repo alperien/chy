@@ -30,7 +30,7 @@ jobs:
       image: ghcr.io/void-linux/void-glibc-full:latest
     steps:
       - name: prepare container
-        run: xbps-install -Sy git ca-certificates || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates; }
+        run: xbps-install -Sy git ca-certificates curl patch gcc make pkg-config || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates curl patch gcc make pkg-config; }
 
       - uses: actions/checkout@v4
 
