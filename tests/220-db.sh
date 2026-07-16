@@ -38,9 +38,12 @@ assert_eq "$(cat "$CHY_ROOT/db/installed/defp/version")" '1.0 1' \
     'revision defaults to 1'
 assert_absent "$CHY_ROOT/db/installed/defp/depends"
 
-# --- depends is copied verbatim, comments and blanks included ---
+# --- depends is copied verbatim, comments and blanks included.
+#     Depends resolve at install, so the two names are listed
+# in db/provided to keep them satisfied without recipes ---
 mkpkg "$CHY_ROOT" depp 2.0 usr/bin/depp-tool
 printf 'zlib\n\n# build note\nopenssl\n' >"$CHY_ROOT/recipes/depp/depends"
+printf 'zlib\nopenssl\n' >"$CHY_ROOT/db/provided"
 run_chy install depp
 assert_rc 0 'depp install'
 [ -f "$CHY_ROOT/db/installed/depp/depends" ] || fail 'depends not copied to db'

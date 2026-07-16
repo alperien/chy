@@ -1,7 +1,8 @@
 #!/bin/sh
-# install: names processed strictly in order, first failure aborts
-# the run but completed installs stay; stdout is only "chy: <name>: ..."
-# progress plus the exact completion line. Reinstalls follow the full
+# install: the needed set runs in the deterministic order
+# (argument order does not matter), first failure aborts the run but
+# completed installs stay; stdout is the order line plus "chy: <name>:"
+# progress and the exact completion line. Reinstalls follow the full
 # pipeline: a failed rebuild never costs the working install; a successful
 # one replaces store entry, alias, farm links and db entry.
 set -eu
@@ -15,31 +16,33 @@ t_init
 mkpkg "$CHY_ROOT" solo 1.0 usr/bin/solo-tool
 run_chy install solo
 assert_rc 0 'solo install'
+assert_order_first 'solo'
 file_has_line "$OUT" 'chy: solo: installed 1.0 1'
-if grep -q -v '^chy: solo: ' "$OUT"; then
+if grep -v '^chy: order: solo$' "$OUT" | grep -q -v '^chy: solo: '; then
     cat "$OUT" >&2
-    fail 'stdout carries a line outside the chy: solo: grammar'
+    fail 'stdout carries a line outside the order + chy: solo: grammar'
 fi
 assert_empty_file "$ERR" 'clean install is silent on stderr'
 
-# --- order given, abort on first failure, earlier installs kept ---
-mkpkg "$CHY_ROOT" ok1 1.0 usr/bin/ok1-tool
-mkpkg "$CHY_ROOT" bad 1.0 usr/bin/bad-tool
-rm "$CHY_ROOT/recipes/bad/build"
-mkpkg "$CHY_ROOT" ok2 1.0 usr/bin/ok2-tool
+# --- deterministic order, abort on first failure, earlier installs kept ---
+mkpkg "$CHY_ROOT" alpha-ok 1.0 usr/bin/alpha-ok-tool
+mkpkg "$CHY_ROOT" mid-bad 1.0 usr/bin/mid-bad-tool
+rm "$CHY_ROOT/recipes/mid-bad/build"
+mkpkg "$CHY_ROOT" zeta-ok 1.0 usr/bin/zeta-ok-tool
 
-run_chy install ok1 bad ok2
+run_chy install zeta-ok alpha-ok mid-bad
 assert_rc 1 'first failure aborts the run'
-file_has_line "$OUT" 'chy: ok1: installed 1.0 1'
-file_matches "$ERR" '^chy: bad: error: '
-assert_installed "$CHY_ROOT" ok1 1.0 1
-assert_eq "$(cat "$CHY_ROOT/usr/bin/ok1-tool")" \
-    "$(pkg_content ok1 usr/bin/ok1-tool)" 'ok1 stays installed'
-assert_not_installed "$CHY_ROOT" ok2
-assert_no_store "$CHY_ROOT" ok2 1.0
-assert_absent "$CHY_ROOT/usr/bin/ok2-tool"
-if grep -q '^chy: ok2: installed' "$OUT"; then
-    fail 'ok2 must never be reached after the bad package'
+assert_order 'alpha-ok mid-bad zeta-ok'
+file_has_line "$OUT" 'chy: alpha-ok: installed 1.0 1'
+file_matches "$ERR" '^chy: mid-bad: error: '
+assert_installed "$CHY_ROOT" alpha-ok 1.0 1
+assert_eq "$(cat "$CHY_ROOT/usr/bin/alpha-ok-tool")" \
+    "$(pkg_content alpha-ok usr/bin/alpha-ok-tool)" 'alpha-ok stays installed'
+assert_not_installed "$CHY_ROOT" zeta-ok
+assert_no_store "$CHY_ROOT" zeta-ok 1.0
+assert_absent "$CHY_ROOT/usr/bin/zeta-ok-tool"
+if grep -q '^chy: zeta-ok: installed' "$OUT"; then
+    fail 'zeta-ok must never be reached after the failing package'
 fi
 
 # --- failed rebuild: the previous version survives completely ---

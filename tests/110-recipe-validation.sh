@@ -118,10 +118,12 @@ assert_absent "$CHY_ROOT/cache/trap-kind.txt"
 check_invalid badver 'hyphenated version is invalid'
 assert_absent "$CHY_ROOT/cache/trap-badver.txt"
 
-# --- unknown package: no recipe directory at all ---
+# --- unknown package: no recipe directory at all, revision 2 made this
+# the resolver's missing-recipe error with requirer `install` ---
 run_chy install nosuchpkg
 assert_rc 1 'unknown package'
-file_matches "$ERR" '^chy: nosuchpkg: error: '
+file_has_line "$ERR" \
+    'chy: install: error: needs nosuchpkg, which has no recipe and is not provided'
 
 # --- an argument that is not a legal package name fails with exit 1 ---
 run_chy install BadName

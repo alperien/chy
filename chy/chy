@@ -4,12 +4,13 @@
 # One file. POSIX sh. Readable in one sitting. The state is the filesystem.
 # $CHY_ROOT defines the world; nothing else knows where things live.
 #
-# install, remove, list. Sources are fetched and verified, built
-# into store/<name>-<version>/, linked into the usr/ symlink farm, and
-# recorded under db/installed/. No dependency resolution yet - the caller
-# supplies install order.
+# the resolver. install walks depends+makedepends, checks
+# conflicts, and builds in the unique smallest valid order; remove guards
+# against reverse dependencies and cascades orphans with -r. Sources are
+# fetched and verified, built into store/<name>-<version>/, linked into
+# the usr/ symlink farm, and recorded under db/installed/.
 
-CHY_VERSION=0.1.0
+CHY_VERSION=0.2.0
 set -u
 
 # --------------------------------------------------------------- output --
@@ -26,9 +27,12 @@ usage() {
 chy $CHY_VERSION - a tiny package manager for hand-built Linux systems
 
 usage:
-  chy install name...   fetch, verify, build, and link packages
-  chy remove name...    unlink packages and delete their store entries
+  chy install [--no-deps] name...
+                        resolve, fetch, verify, build, and link packages
+  chy remove [-r] name...
+                        unlink and delete packages; -r cascades orphans
   chy list [name...]    list installed packages
+  chy provided          list host-provided package names
   chy version           print chy's version
 
 \$CHY_ROOT selects the root (default: \$HOME/.chy).
@@ -38,9 +42,10 @@ EOF
 # ----------------------------------------------------------- validation --
 # Package names match [a-z0-9][a-z0-9+._-]*; versions and revisions match
 # [A-Za-z0-9._+]+ (no hyphen, so store/<name>-<version> parses cleanly).
+# "install" and "order" are reserved: reserved output scopes.
 
 valid_name() {
-    case $1 in ''|[!a-z0-9]*) return 1 ;; esac
+    case $1 in ''|[!a-z0-9]*|install|order) return 1 ;; esac
     case ${1#?} in *[!a-z0-9+._-]*) return 1 ;; *) return 0 ;; esac
 }
 
@@ -93,6 +98,34 @@ EOF
 sha_of() { # print the sha256 digest of a file
     sha_out=$(sha256sum "$1") || return 1
     printf '%s\n' "${sha_out%%[[:space:]]*}"
+}
+
+# Name sets are strings like " a b c ". Names never contain whitespace,
+# so membership is a case match and the resolver needs no arrays.
+in_set() { # in_set <name> <set>
+    case $2 in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
+# Walking a set: `REST=$set; while pop; do ... $POP ... done`. pop consumes
+# the first name of $REST into $POP; false when done. Never nest walks.
+pop() {
+    REST=${REST# }
+    [ -n "$REST" ] || return 1
+    case $REST in
+        *' '*) POP=${REST%% *} REST=${REST#* } ;;
+        *)     POP=$REST REST= ;;
+    esac
+}
+
+# The names in a list-valued file: the first field of every significant
+# line. A missing file is an empty list.
+list_names() { # list_names <file>
+    [ -f "$1" ] || return 0
+    sig_lines "$1" | while IFS= read -r ln_l; do first_field "$ln_l"; done
+}
+
+provided_names() { # db/provided names: sorted, de-duplicated
+    list_names "$CHY_ROOT/db/provided" | LC_ALL=C sort -u
 }
 
 # -------------------------------------------------------------- recipes --
@@ -419,13 +452,17 @@ link_farm() { # link_farm <name>
 }
 
 # The db entry is written last; its presence means "installed".
-write_db() { # write_db <name>
+# depends/conflicts are verbatim recipe copies; the empty requested marker
+# means "named on the command line" - dependency installs never carry it.
+write_db() { # write_db <name> <requested: 1|0>
     wd_db=$CHY_ROOT/db/installed/$1
     rm -rf "$wd_db"
     mkdir -p "$wd_db"
     printf '%s %s\n' "$R_VER" "$R_REV" >"$wd_db/version"
     cp "$LIST" "$wd_db/manifest"
     [ ! -f "$R_DIR/depends" ] || cp "$R_DIR/depends" "$wd_db/depends"
+    [ ! -f "$R_DIR/conflicts" ] || cp "$R_DIR/conflicts" "$wd_db/conflicts"
+    [ "$2" -ne 1 ] || : >"$wd_db/requested"
 }
 
 # --------------------------------------------------------------- remove --
@@ -466,6 +503,21 @@ unlink_links() { # unlink_links <name>
     done <"$ul_m"
 }
 
+# The installed packages whose db-recorded depends name $1 - the guard's
+# evidence (makedepends never guard). $1 itself and the exempt set do not
+# count. Output: byte-sorted, space-separated, trailing space if any.
+requirers_of() { # requirers_of <name> <exempt-set>
+    for ro_d in "$CHY_ROOT/db/installed/"*; do
+        [ -f "$ro_d/depends" ] || continue
+        ro_p=${ro_d##*/}
+        [ "$ro_p" = "$1" ] && continue
+        in_set "$ro_p" "$2" && continue
+        if list_names "$ro_d/depends" | grep -Fqx "$1"; then
+            printf '%s\n' "$ro_p"
+        fi
+    done | LC_ALL=C sort | tr '\n' ' '
+}
+
 do_remove() { # do_remove <name> - the package must be installed
     dr_db=$CHY_ROOT/db/installed/$1
     [ -f "$dr_db/version" ] || fail "$1" "db entry is corrupt: no version file"
@@ -483,7 +535,7 @@ do_remove() { # do_remove <name> - the package must be installed
 # The pipeline, in order. Any failure up to and including the
 # conflict scan leaves the root exactly as it was: a failed rebuild never
 # costs the working install.
-do_install() { # do_install <name>
+do_install() { # do_install <name> <requested: 1|0>
     valid_name "$1" || fail "$1" "invalid package name"
     recipe_check "$1"                              # 1
     fetch_all "$1"                                 # 2
@@ -504,23 +556,305 @@ do_install() { # do_install <name>
     ln -s "$1-$R_VER" "$CHY_ROOT/store/$1" ||      # 9: point the alias
         fail "$1" "cannot point the alias"
     link_farm "$1"                                 # 10
-    write_db "$1"                                  # 11
+    write_db "$1" "$2"                             # 11
     say "$1" "installed $R_VER $R_REV"
+}
+
+# ------------------------------------------------------------- resolver --
+# install resolution, steps 2-5. Scratch lives in build/resolve;
+# resolution completes before any pipeline step wipes build/.
+#
+# Step 2: the needed set - walk depends+makedepends transitively from the
+# requested names. A walked dependency is satisfied (joins nothing, its
+# subtree not entered) when installed or provided; requested names never
+# are. Step 3: every needed name must have a recipe.
+resolve() { # resolve <space-separated requested names> - sets ORDER
+    RES=$CHY_ROOT/build/resolve
+    rm -rf "$RES"; mkdir -p "$RES"
+    : >"$RES/edges"; : >"$RES/missing"
+
+    NEEDED=" $1 " rv_seen=" $1 " REST=$1
+    printf '%s\n' "$1" | tr ' ' '\n' >"$RES/needed"
+
+    while pop; do
+        rv_cur=$POP
+        rv_dir=$CHY_ROOT/recipes/$rv_cur
+        if [ ! -d "$rv_dir" ]; then       # a leaf: its needs are unknowable
+            printf '%s\n' "$rv_cur" >>"$RES/missing"
+            continue
+        fi
+        { list_names "$rv_dir/depends"
+          list_names "$rv_dir/makedepends"; } >"$RES/deps"
+        while IFS= read -r rv_d <&3; do
+            valid_name "$rv_d" || fail "$rv_cur" "invalid dependency name: $rv_d"
+            printf '%s %s\n' "$rv_cur" "$rv_d" >>"$RES/edges"
+            in_set "$rv_d" "$rv_seen" && continue
+            rv_seen="$rv_seen$rv_d "
+            [ -d "$CHY_ROOT/db/installed/$rv_d" ] && continue # satisfied
+            in_set "$rv_d" "$PROVIDED" && continue             # satisfied
+            NEEDED="$NEEDED$rv_d " REST="$REST $rv_d"
+            printf '%s\n' "$rv_d" >>"$RES/needed"
+        done 3<"$RES/deps"
+    done
+
+    # Report the smallest missing name, once: blamed on "install" when it
+    # was requested, else on its smallest needed requirer.
+    if [ -s "$RES/missing" ]; then
+        rv_m=$(LC_ALL=C sort "$RES/missing" | head -n 1)
+        rv_by=install
+        in_set "$rv_m" "$REQUESTED" || rv_by=$(awk -v m="$rv_m" \
+            '$2 == m { print $1 }' "$RES/edges" | LC_ALL=C sort | head -n 1)
+        fail "$rv_by" "needs $rv_m, which has no recipe and is not provided"
+    fi
+
+    resolve_conflicts
+    ORDER=$(order_awk install) || case $? in
+        3) fail install "dependency cycle: $ORDER" ;;
+        *) fail install 'cannot order the needed set' ;;
+    esac
+}
+
+# Step 4, three checks: a needed package's recipe conflicts with an
+# installed one; an installed package's db-recorded conflicts with a
+# needed one; a needed package's recipe conflicts with another needed
+# one. Every violating pair prints one line - <name> the needed package,
+# pairs sorted by <name> then <other>, the installed wording winning when
+# both apply ("installed" < "needed" in byte order does that for free).
+resolve_conflicts() {
+    : >"$RES/pairs"
+    while IFS= read -r rc_n <&3; do
+        list_names "$CHY_ROOT/recipes/$rc_n/conflicts" >"$RES/confl"
+        while IFS= read -r rc_c <&4; do
+            [ "$rc_c" = "$rc_n" ] && continue
+            [ ! -d "$CHY_ROOT/db/installed/$rc_c" ] ||
+                printf '%s %s installed\n' "$rc_n" "$rc_c" >>"$RES/pairs"
+            ! in_set "$rc_c" "$NEEDED" ||
+                printf '%s %s needed\n' "$rc_n" "$rc_c" >>"$RES/pairs"
+        done 4<"$RES/confl"
+    done 3<"$RES/needed"
+
+    for rc_d in "$CHY_ROOT/db/installed/"*; do
+        [ -f "$rc_d/conflicts" ] || continue
+        rc_i=${rc_d##*/}
+        list_names "$rc_d/conflicts" >"$RES/confl"
+        while IFS= read -r rc_c <&3; do
+            if [ "$rc_c" != "$rc_i" ] && in_set "$rc_c" "$NEEDED"; then
+                printf '%s %s installed\n' "$rc_c" "$rc_i" >>"$RES/pairs"
+            fi
+        done 3<"$RES/confl"
+    done
+
+    [ -s "$RES/pairs" ] || return 0
+    LC_ALL=C sort -u "$RES/pairs" | while read -r rc_n rc_o rc_k; do
+        [ "$rc_n $rc_o" = "${rc_prev-}" ] && continue
+        rc_prev="$rc_n $rc_o"
+        rc_what="installed $rc_o"
+        [ "$rc_k" != needed ] || rc_what="$rc_o, also in this install"
+        err "$rc_n" "conflicts with $rc_what"
+    done
+    exit 1
+}
+
+# Step 5: order $RES/needed over the $RES/edges kept inside the set - the
+# unique smallest valid sequence: repeatedly emit the byte-smallest name
+# whose kept dependencies have all been emitted. A stall means a cycle:
+# under install, print the cycle from its smallest member and exit 3;
+# under cascade (remove -r), drop that member's cycle edge and carry on.
+order_awk() { # order_awk <install|cascade>
+    LC_ALL=C sort -o "$RES/needed" "$RES/needed"
+    LC_ALL=C awk -v mode="$1" '
+        # Shortest live path a => b, breadth-first, smaller names claimed
+        # first within a hop; "" when unreachable, "a" when a == b.
+        function find_path(a, b,    qh, qt, q, cur, m, arr, k, w, out) {
+            if (a == b) return a
+            gen++; vis[a] = gen
+            qh = 1; qt = 1; q[1] = a
+            while (qh <= qt) {
+                cur = q[qh++]
+                m = split(adj[cur], arr, " ")
+                for (k = 1; k <= m; k++) {
+                    w = arr[k]
+                    if (w == "" || !live[cur, w] || done[w] || vis[w] == gen)
+                        continue
+                    vis[w] = gen; par[w] = cur; q[++qt] = w
+                }
+            }
+            if (vis[b] != gen) return ""
+            out = b
+            for (cur = b; cur != a; cur = par[cur]) out = par[cur] " -> " out
+            return out
+        }
+        # The byte-smallest live neighbour of c that leads back to c -
+        # "" unless c lies on a cycle.
+        function hop(c,    m, arr, k, w, best) {
+            best = ""
+            m = split(adj[c], arr, " ")
+            for (k = 1; k <= m; k++) {
+                w = arr[k]
+                if (w == "" || !live[c, w] || done[w]) continue
+                if (best != "" && w >= best) continue
+                if (find_path(w, c) != "") best = w
+            }
+            return best
+        }
+        NR == FNR { if (!($1 in need)) { need[$1] = 1; names[++n] = $1 }; next }
+        ($1 in need) && ($2 in need) && !(($1, $2) in live) {
+            live[$1, $2] = 1
+            cnt[$1]++
+            adj[$1] = adj[$1] " " $2
+            rdep[$2] = rdep[$2] " " $1
+        }
+        END {                # names[] arrives byte-sorted (sort -o above)
+            emitted = 0
+            while (emitted < n) {
+                pick = ""
+                for (i = 1; i <= n; i++)
+                    if (!done[names[i]] && cnt[names[i]] == 0) {
+                        pick = names[i]; break
+                    }
+                if (pick != "") {
+                    done[pick] = 1; ord[++emitted] = pick
+                    m = split(rdep[pick], arr, " ")
+                    for (k = 1; k <= m; k++)
+                        if (arr[k] != "" && live[arr[k], pick]) cnt[arr[k]]--
+                    continue
+                }
+                w = ""                       # stalled: a cycle exists
+                for (i = 1; i <= n; i++) {   # its smallest on-cycle name
+                    s = names[i]
+                    if (!done[s] && (w = hop(s)) != "") break
+                }
+                if (w == "") exit 4          # cannot happen: stall => cycle
+                if (mode == "install") {
+                    printf "%s -> %s", s, find_path(w, s)
+                    exit 3
+                }
+                live[s, w] = 0               # cascade: break the cycle here
+                cnt[s]--
+            }
+            for (i = 1; i <= n; i++) printf "%s%s", (i > 1 ? " " : ""), ord[i]
+            print ""
+        }
+    ' "$RES/needed" "$RES/edges"
 }
 
 # ---------------------------------------------------------------- verbs --
 cmd_install() {
+    ci_nodeps=0
+    if [ "${1-}" = --no-deps ]; then ci_nodeps=1; shift; fi
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
+
+    # Resolution step 1: duplicates collapse (first occurrence wins); a
+    # requested name the host provides is skipped with a warning; every
+    # other requested name is never treated as satisfied.
+    PROVIDED=" $(provided_names | tr '\n' ' ')"
+    REQUESTED=' ' ci_seen=' ' ci_names=''
     for ci_n in "$@"; do
-        do_install "$ci_n"
+        case $ci_n in -*) usage >&2; exit 2 ;; esac
+        valid_name "$ci_n" || fail "$ci_n" "invalid package name"
+        in_set "$ci_n" "$ci_seen" && continue
+        ci_seen="$ci_seen$ci_n "
+        if in_set "$ci_n" "$PROVIDED"; then
+            warn "$ci_n" 'provided by the host'
+            continue
+        fi
+        REQUESTED="$REQUESTED$ci_n " ci_names="${ci_names:+$ci_names }$ci_n"
+    done
+    [ -n "$ci_names" ] || exit 0        # everything provided: no order line
+
+    ORDER=$ci_names                     # --no-deps: steps 2-5 skipped,
+    [ "$ci_nodeps" -eq 1 ] ||           # the order as given
+        resolve "$ci_names"
+
+    printf 'chy: order: %s\n' "$ORDER"
+    REST=$ORDER
+    while pop; do
+        ci_req=0
+        in_set "$POP" "$REQUESTED" && ci_req=1
+        do_install "$POP" "$ci_req"
     done
 }
 
+# remove -r: the removal set starts as the named packages plus
+# every unrequested installed package in their recorded-depends closure;
+# then any non-named member some installed package outside the set still
+# depends on is deleted, repeatedly, to a fixed point - so mutually-
+# dependent orphans that only cite each other still go. db data only.
+cascade_remove() {
+    ca_named=' '
+    for ca_n in "$@"; do
+        valid_name "$ca_n" || fail "$ca_n" "invalid package name"
+        [ -d "$CHY_ROOT/db/installed/$ca_n" ] || fail "$ca_n" "not installed"
+        in_set "$ca_n" "$ca_named" || ca_named="$ca_named$ca_n "
+    done
+    RES=$CHY_ROOT/build/resolve
+    rm -rf "$RES"; mkdir -p "$RES"
+
+    ca_set=$ca_named ca_seen=$ca_named REST=$ca_named
+    while pop; do                            # the recorded-depends closure
+        list_names "$CHY_ROOT/db/installed/$POP/depends" >"$RES/deps"
+        while IFS= read -r ca_d <&3; do
+            in_set "$ca_d" "$ca_seen" && continue
+            ca_seen="$ca_seen$ca_d "
+            [ -d "$CHY_ROOT/db/installed/$ca_d" ] || continue
+            REST="$REST $ca_d"
+            [ -f "$CHY_ROOT/db/installed/$ca_d/requested" ] ||
+                ca_set="$ca_set$ca_d "
+        done 3<"$RES/deps"
+    done
+
+    while :; do                              # shrink to the fixed point
+        ca_new=' ' REST=$ca_set
+        while pop; do
+            if ! in_set "$POP" "$ca_named"; then
+                ca_by=$(requirers_of "$POP" "$ca_set")
+                [ -n "$ca_by" ] && continue # pinned from outside: deleted
+            fi
+            ca_new="$ca_new$POP "
+        done
+        [ "$ca_new" = "$ca_set" ] && break
+        ca_set=$ca_new
+    done
+
+    REST=$ca_named
+    while pop; do                            # outsiders veto named removals
+        ca_by=$(requirers_of "$POP" "$ca_set"); ca_by=${ca_by% }
+        [ -z "$ca_by" ] || fail "$POP" "required by: $ca_by"
+    done
+
+    : >"$RES/needed"; : >"$RES/edges"        # set-internal recorded edges
+    REST=$ca_set
+    while pop; do
+        printf '%s\n' "$POP" >>"$RES/needed"
+        list_names "$CHY_ROOT/db/installed/$POP/depends" >"$RES/deps"
+        while IFS= read -r ca_d <&3; do
+            if in_set "$ca_d" "$ca_set"; then
+                printf '%s %s\n' "$POP" "$ca_d" >>"$RES/edges"
+            fi
+        done 3<"$RES/deps"
+    done
+    ca_ord=$(order_awk cascade) || fail remove 'cannot order the removal set'
+
+    ca_rev='' REST=$ca_ord                   # remove in exact reverse order
+    while pop; do ca_rev="$POP${ca_rev:+ $ca_rev}"; done
+    REST=$ca_rev
+    while pop; do do_remove "$POP"; done
+}
+
 cmd_remove() {
+    cr_casc=0
+    if [ "${1-}" = -r ]; then cr_casc=1; shift; fi
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
+    for cr_n in "$@"; do
+        case $cr_n in -*) usage >&2; exit 2 ;; esac
+    done
+    if [ "$cr_casc" -eq 1 ]; then cascade_remove "$@"; return 0; fi
     for cr_n in "$@"; do
         valid_name "$cr_n" || fail "$cr_n" "invalid package name"
         [ -d "$CHY_ROOT/db/installed/$cr_n" ] || fail "$cr_n" "not installed"
+        cr_by=$(requirers_of "$cr_n" ' ')    # the guard, at this moment
+        cr_by=${cr_by% }
+        [ -z "$cr_by" ] || fail "$cr_n" "required by: $cr_by"
         do_remove "$cr_n"
     done
 }
@@ -531,7 +865,16 @@ list_one() { # print "<name> <version> <revision>" from the db
     printf '%s %s %s\n' "$1" "$lo_v" "$lo_r"
 }
 
+cmd_provided() {
+    [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+    provided_names
+    exit 0
+}
+
 cmd_list() {
+    for cl_n in "$@"; do
+        case $cl_n in -*) usage >&2; exit 2 ;; esac
+    done
     if [ "$#" -eq 0 ]; then
         for cl_d in "$CHY_ROOT/db/installed/"*; do
             [ -f "$cl_d/version" ] || continue
@@ -563,5 +906,6 @@ case ${1-} in
     install)      shift; cmd_install "$@" ;;
     remove)       shift; cmd_remove "$@" ;;
     list)         shift; cmd_list "$@" ;;
+    provided)     shift; cmd_provided "$@" ;;
     *)            usage >&2; exit 2 ;;
 esac

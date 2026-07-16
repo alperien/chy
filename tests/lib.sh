@@ -1,5 +1,5 @@
 # shellcheck shell=sh
-# tests/lib.sh - shared helpers for the chy suite.
+# tests/lib.sh - shared helpers for the suite.
 #
 # Sourced by every test after `cd` to the repo root. POSIX sh, no local.
 # Everything here works from chy's promised behavior; tests never look at
@@ -182,6 +182,70 @@ mkpkg() {
         printf "printf '%%s\\\\n' '%s' >\"\$1\$CHY_ROOT/%s\"\n" \
             "$(pkg_content "$mk_name" "$mk_p")" "$mk_p" >>"$mk_dir/build"
     done
+}
+
+# recipe_list ROOT NAME FILE ENTRY... - (over)write a list-valued recipe
+# file (depends, makedepends, conflicts), one entry per line.
+recipe_list() {
+    rl_path="$1/recipes/$2/$3"
+    shift 3
+    : >"$rl_path"
+    for rl_e in "$@"; do
+        printf '%s\n' "$rl_e" >>"$rl_path"
+    done
+}
+
+# stamp_builds ROOT NAME DIR - make NAME's build touch DIR/built-<NAME>,
+# so a test can tell whether the build ran at all.
+stamp_builds() {
+    printf 'touch "%s/built-%s"\n' "$3" "$2" >>"$1/recipes/$2/build"
+}
+
+# installed_seq - names from the "installed" completion lines of $OUT, in
+# order, space-joined. The build sequence of the last install invocation.
+installed_seq() {
+    sed -n 's/^chy: \(.*\): installed .*$/\1/p' "$OUT" | tr '\n' ' ' | sed 's/ $//'
+}
+
+# removed_seq - same for "removed" completion lines.
+removed_seq() {
+    sed -n 's/^chy: \(.*\): removed .*$/\1/p' "$OUT" | tr '\n' ' ' | sed 's/ $//'
+}
+
+# assert_order 'names...' - exactly one order line on stdout, pinned.
+assert_order() {
+    ao_n=$(count_matches '^chy: order: ' "$OUT")
+    if [ "$ao_n" != 1 ]; then
+        dump_streams
+        fail "expected exactly one order line, found $ao_n"
+    fi
+    file_has_line "$OUT" "chy: order: $1"
+}
+
+# assert_order_first 'names...' - the order line, and it precedes every
+# pipeline line (printed before any pipeline step; chy's stdout is
+# only the pinned lines, and the builds these tests run are silent).
+assert_order_first() {
+    assert_order "$1"
+    aof_first=$(head -n 1 "$OUT")
+    assert_eq "$aof_first" "chy: order: $1" 'order line must come first on stdout'
+}
+
+# assert_no_order - no order line printed at all.
+assert_no_order() {
+    if grep -q '^chy: order: ' "$OUT"; then
+        dump_streams
+        fail 'an order line printed where none belongs'
+    fi
+}
+
+assert_requested() { # root name - marker present (and an empty file)
+    [ -f "$1/db/installed/$2/requested" ] || fail "requested marker missing for $2"
+    [ ! -s "$1/db/installed/$2/requested" ] || fail "requested marker for $2 is not empty"
+}
+
+assert_not_requested() { # root name
+    assert_absent "$1/db/installed/$2/requested"
 }
 
 # mktgz OUT DIR ENTRY... - a real gzipped tarball of DIR's ENTRYs.

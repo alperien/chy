@@ -1,8 +1,9 @@
 #!/bin/sh
-# Integration: the spike chain - zlib -> libpng -> freetype.
-# Builds the real packages from the repo's recipes in a fresh rootless
-# prefix. Needs a C toolchain, make, and network; SKIPs loudly where
-# absent. The CI container provides all three - that run is the point.
+# Integration: the acceptance chain. `chy install freetype` alone
+# must resolve the repo recipes' declared depends (freetype -> zlib libpng,
+# libpng -> zlib), print the deterministic order, and build the real
+# packages in a fresh rootless prefix. Needs a C toolchain, make, and
+# network; SKIPs loudly where absent. The CI container provides all three.
 set -u
 
 command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 || {
@@ -19,9 +20,21 @@ mkdir -p "$CHY_ROOT/recipes"
 cp -R "$repo/recipes/zlib" "$repo/recipes/libpng" "$repo/recipes/freetype" \
       "$CHY_ROOT/recipes/"
 
-# hand-ordered: has no resolver, by design
-sh chy/chy install zlib libpng freetype || {
-    echo "chain install failed"; exit 1; }
+# the resolver's job: one requested name pulls and orders the chain
+iout="$work/install.out"
+sh chy/chy install freetype >"$iout" 2>"$work/install.err" || {
+    echo "chain install failed"
+    cat "$iout" "$work/install.err"
+    exit 1
+}
+grep -F -x -q 'chy: order: zlib libpng freetype' "$iout" || {
+    echo "missing or wrong order line; stdout was:"
+    cat "$iout"
+    exit 1
+}
+for n in zlib libpng freetype; do
+    [ -d "$CHY_ROOT/db/installed/$n" ] || { echo "not installed: $n"; exit 1; }
+done
 
 for f in usr/lib/libz.so usr/lib/libpng16.so usr/lib/libfreetype.so; do
     [ -e "$CHY_ROOT/$f" ] || { echo "missing: $f"; exit 1; }
