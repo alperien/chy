@@ -1,1 +1,3 @@
 *.log
+translator/__pycache__/
+translator/tests/__pycache__/
