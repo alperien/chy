@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""chytrans - turn Void Linux package data into chy recipes.
+
+    chytrans snapshot --out DIR NAME...             (network)
+    chytrans translate --snapshot DIR --out DIR NAME...   (offline)
+
+The moving parts: snapshot, outputs,
+shlibs.map, provided.suggested, refusals and exit status.
+Python 3.9+, stdlib only.
+"""
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+_SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, _SCRIPT_DIR)
+
+import repodata
+import snapshot
+
+TRANSLATOR_VERSION = "1"
+
+
+class _SliceMiss(Exception):
+    """A flatten or closure lookup missed the snapshot slice;
+    that's a per-package refusal naming the dependency."""
+
+    def __init__(self, name):
+        super().__init__(name)
+        self.name = name
+
+
+def _is_handwritten(outroot, name):
+    """True when recipes/<name>/meta under the output root says
+    'origin: handwritten' - the short-circuit: never attempted,
+    never overwritten."""
+    meta = os.path.join(outroot, "recipes", name, "meta")
+    if not os.path.isfile(meta):
+        return False
+    with open(meta, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            key, sep, value = line.partition(":")
+            if sep and key.strip() == "origin" \
+                    and value.strip() == "handwritten":
+                return True
+    return False
+
+
+def _normalize_dump(dump_root, name):
+    """evaluate.sh is handed an out-dir; the fixed dump layout is
+    <out>/<name>/{vars,options,functions/}.  If a flat layout arrives
+    instead (older dumps were laid out flat), restructure it so emit
+    sees the fixed shape."""
+    if os.path.isfile(os.path.join(dump_root, name, "vars")):
+        return
+    if not os.path.isfile(os.path.join(dump_root, "vars")):
+        return
+    pkgdir = os.path.join(dump_root, name)
+    os.mkdir(pkgdir)
+    for entry in os.listdir(dump_root):
+        if entry != name:
+            os.rename(os.path.join(dump_root, entry),
+                      os.path.join(pkgdir, entry))
+
+
+def _package_references(name, snap, dump_root, result):
+    """Every binary package name this recipe referenced: its repodata
+    run_depends, its evaluated hostmakedepends+makedepends, and the
+    Injected tools - parsed, libc and virtual dropped.  These are
+    the hint column's raw material."""
+    refs = set()
+    for token in snap.slice[name].get("run_depends", []):
+        dep, kind = repodata.parse_dep(token)
+        if kind == "virtual" or dep in repodata.LIBC:
+            continue
+        refs.add(dep)
+    refs |= snapshot.dump_dep_names(dump_root, name)
+    # plus emit's injections, exactly as emitted: injected tools are
+    # the makedepends entries not derivable from the dump or run_depends
+    # (integration fix, meeting #3: the snapshot-side injection table is
+    # a fetch-coverage superset and can't leak into provided.suggested)
+    derivable = set()
+    for b in refs:
+        src = repodata.flatten(b, snap.slice)
+        if src is not None:
+            derivable.add(src)
+    refs |= {m for m in (set(result.makedepends) | set(result.depends))
+             if m not in derivable}
+    return refs
+
+
+def _provided_contrib(name, result, snap, dump_root):
+    """One emitted recipe's contribution to provided.suggested:
+    {source package: set of binary names referenced}.  The source set
+    is exactly result.depends + result.makedepends (emit's word) plus the
+    transitive run_depends closures of what was referenced; the binary
+    names ride along as the install-hint column.  Any lookup that
+    misses the slice raises _SliceMiss -> per-package refusal."""
+    direct = set(result.depends) | set(result.makedepends)
+    hints = {}
+    walk = []
+    for binary in sorted(_package_references(name, snap, dump_root, result)):
+        src = repodata.flatten(binary, snap.slice)
+        if src is None:
+            raise _SliceMiss(binary)
+        if src in direct:
+            hints.setdefault(src, set()).add(binary)
+            walk.append(binary)
+    # Anything emit derived that our reference mirror didn't see gets
+    # its own name as the hint, and is closure-walked when the slice
+    # also knows it as a binary name (it normally does).
+    for src in sorted(direct - set(hints)):
+        hints.setdefault(src, set()).add(src)
+        if src in snap.slice:
+            walk.append(src)
+    seen = set(walk)
+    while walk:
+        binary = walk.pop()
+        entry = snap.slice.get(binary)
+        if entry is None:
+            raise _SliceMiss(binary)
+        for token in entry.get("run_depends", []):
+            dep, kind = repodata.parse_dep(token)
+            if kind == "virtual":
+                # Unresolvable by design; none occur in the
+                # corpus closure.  Loud but not fatal here.
+                sys.stderr.write("chytrans: warning: %s: skipping virtual"
+                                 " dependency %s in provided closure\n"
+                                 % (name, token))
+                continue
+            if dep in repodata.LIBC or dep in seen:
+                continue
+            seen.add(dep)
+            src = repodata.flatten(dep, snap.slice)
+            if src is None:
+                raise _SliceMiss(dep)
+            hints.setdefault(src, set()).add(dep)
+            walk.append(dep)
+    return hints
+
+
+def _write_lines(path, lines):
+    with open(path, "w", encoding="utf-8") as f:
+        for line in lines:
+            f.write(line + "\n")
+
+
+def cmd_translate(args):
+    names = sorted(set(args.names))
+    outroot = os.path.abspath(args.out)
+    os.makedirs(outroot, exist_ok=True)
+
+    eval_sh = os.path.join(_SCRIPT_DIR, "evaluate.sh")
+    if not os.path.isfile(eval_sh):
+        sys.stderr.write("chytrans: translator/evaluate.sh is missing;"
+                         " cannot translate\n")
+        return 1
+    try:
+        import emit
+    except ImportError:
+        sys.stderr.write("chytrans: translator/emit.py is missing;"
+                         " cannot translate\n")
+        return 1
+    try:
+        snap = snapshot.load(args.snapshot)
+    except snapshot.SnapshotError as err:
+        sys.stderr.write("chytrans: %s\n" % err)
+        return 1
+
+    report = []
+    translated = []
+    exceptions = []
+    hints = {}
+
+    def refuse(name, reason):
+        report.append("refused: %s: %s" % (name, reason))
+        sys.stderr.write("chytrans: %s: refused: %s\n" % (name, reason))
+
+    for name in names:
+        if _is_handwritten(outroot, name):
+            exceptions.append(name)
+            report.append("exception: %s" % name)
+            continue
+        if name not in snap.slice:
+            refuse(name, "not in snapshot slice")
+            continue
+        srcdir = snap.srcpkg_dir(name)
+        if srcdir is None:
+            refuse(name, "srcpkg tree missing from snapshot")
+            continue
+        dump_root = tempfile.mkdtemp(prefix="chytrans-dump.")
+        try:
+            try:
+                proc = subprocess.run(["bash", eval_sh, srcdir, dump_root],
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, timeout=300)
+            except subprocess.TimeoutExpired:
+                refuse(name, "evaluation timed out")
+                continue
+            if proc.returncode != 0:
+                lines = proc.stderr.decode(errors="replace").strip()
+                detail = lines.splitlines()[-1] if lines else ""
+                refuse(name, "evaluation failed"
+                       + (": %s" % detail if detail else ""))
+                continue
+            _normalize_dump(dump_root, name)
+            result = emit.translate(name, snap, dump_root)
+            if not result.ok:
+                refuse(name, result.reason)
+                continue
+            try:
+                contrib = _provided_contrib(name, result, snap, dump_root)
+            except _SliceMiss as miss:
+                refuse(name, "dependency not in snapshot slice: %s"
+                       % miss.name)
+                continue
+            emit.write(result, outroot)
+            translated.append(name)
+            report.append("translated: %s" % name)
+            for src, binaries in contrib.items():
+                hints.setdefault(src, set()).update(binaries)
+        finally:
+            shutil.rmtree(dump_root, ignore_errors=True)
+
+    # Corpus-level outputs: shlibs.map, provided.suggested, report,
+    # TRANSLATOR_VERSION - deterministic, everything sorted.
+    map_lines, ambiguous = repodata.shlibs_map_with_ambiguities(
+        snap.slice, snap.shlibs)
+    _write_lines(os.path.join(outroot, "shlibs.map"), map_lines)
+
+    drop = set(translated) | set(exceptions)
+    provided = ["%s %s" % (src, ",".join(sorted(hints[src])))
+                for src in sorted(hints) if src not in drop]
+    _write_lines(os.path.join(outroot, "provided.suggested"), provided)
+
+    report.extend("ambiguous-soname: %s" % soname for soname in ambiguous)
+    _write_lines(os.path.join(outroot, "report"), report)
+    _write_lines(os.path.join(outroot, "TRANSLATOR_VERSION"),
+                 [TRANSLATOR_VERSION])
+
+    # exit 0 iff every requested package was translated or is a
+    # preserved handwritten exception.
+    return 0 if set(names) == set(translated) | set(exceptions) else 1
+
+
+def cmd_snapshot(args):
+    try:
+        snapshot.create(args.names, args.out)
+    except snapshot.SnapshotError as err:
+        sys.stderr.write("chytrans: %s\n" % err)
+        return 1
+    return 0
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(
+        prog="chytrans",
+        description="translate Void Linux packages into chy recipes")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_snap = sub.add_parser("snapshot",
+                            help="fetch inputs and build a snapshot")
+    p_snap.add_argument("--out", required=True, metavar="DIR")
+    p_snap.add_argument("names", nargs="+", metavar="NAME")
+    p_snap.set_defaults(func=cmd_snapshot)
+
+    p_tr = sub.add_parser("translate",
+                          help="translate offline from a snapshot")
+    p_tr.add_argument("--snapshot", "--from-snapshot", dest="snapshot",
+                      required=True, metavar="DIR")
+    p_tr.add_argument("--out", required=True, metavar="DIR")
+    p_tr.add_argument("names", nargs="+", metavar="NAME")
+    p_tr.set_defaults(func=cmd_translate)
+
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
