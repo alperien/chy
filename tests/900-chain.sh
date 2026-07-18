@@ -27,8 +27,9 @@ mkdir -p "$CHY_ROOT/recipes" "$CHY_ROOT/db"
 for r in zlib libpng bzip2 freetype; do
     cp -R "$repo/recipes/$r" "$CHY_ROOT/recipes/"
 done
-# brotli stands in for the host base system.
-echo brotli > "$CHY_ROOT/db/provided"
+# brotli and pkg-config stand in for the host base system:
+# translated freetype's makedepends name both, and the container has both.
+printf 'brotli\npkg-config\n' > "$CHY_ROOT/db/provided"
 
 # the resolver's job: one requested name pulls and orders the chain,
 # deterministically.
