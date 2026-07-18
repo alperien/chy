@@ -1,0 +1,15 @@
+origin: translated
+template: srcpkgs/gdk-pixbuf/template
+void-commit: 9c42f31b7d4
+pkgver: gdk-pixbuf-2.42.12_2
+style: meson
+dropped: cross-build block in pre_configure
+expect-needed: libc.so.6
+expect-needed: libgio-2.0.so.0
+expect-needed: libglib-2.0.so.0
+expect-needed: libgmodule-2.0.so.0
+expect-needed: libgobject-2.0.so.0
+expect-needed: libjpeg.so.8
+expect-needed: libm.so.6
+expect-needed: libpng16.so.16
+expect-needed: libtiff.so.6

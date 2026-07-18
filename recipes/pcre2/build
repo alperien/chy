@@ -1,0 +1,16 @@
+#!/bin/sh -e
+./configure \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --with-pic \
+    --enable-pcre2-16 \
+    --enable-pcre2-32 \
+    --enable-pcre2test-libreadline \
+    --enable-pcre2grep-libz \
+    --enable-pcre2grep-libbz2 \
+    --enable-newline-is-anycrlf \
+    --enable-jit \
+    --enable-static \
+    --disable-symvers
+make
+make DESTDIR="$1" install

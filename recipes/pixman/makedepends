@@ -1,0 +1,5 @@
+libpng
+meson
+ninja
+perl
+pkg-config

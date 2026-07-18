@@ -1,0 +1,14 @@
+#!/bin/sh -e
+export LDFLAGS="${LDFLAGS:+$LDFLAGS }-Wl,-z,stack-size=2097152"
+meson setup build \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --libdir=lib \
+    --buildtype=release \
+    -Dgnu-inline-asm=enabled \
+    -Dlibpng=enabled \
+    -Drvv=disabled \
+    -Dopenmp=disabled \
+    -Dgtk=disabled
+ninja -C build
+DESTDIR="$1" ninja -C build install

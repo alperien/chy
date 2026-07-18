@@ -1,0 +1,23 @@
+origin: translated
+template: srcpkgs/cairo/template
+void-commit: 3ce62704c2b
+pkgver: cairo-1.18.4_2
+style: meson
+dropped: build_helper qemu
+expect-needed: ld-linux-x86-64.so.2
+expect-needed: libX11.so.6
+expect-needed: libXext.so.6
+expect-needed: libXrender.so.1
+expect-needed: libc.so.6
+expect-needed: libfontconfig.so.1
+expect-needed: libfreetype.so.6
+expect-needed: libglib-2.0.so.0
+expect-needed: libgobject-2.0.so.0
+expect-needed: liblzo2.so.2
+expect-needed: libm.so.6
+expect-needed: libpixman-1.so.0
+expect-needed: libpng16.so.16
+expect-needed: libxcb-render.so.0
+expect-needed: libxcb-shm.so.0
+expect-needed: libxcb.so.1
+expect-needed: libz.so.1

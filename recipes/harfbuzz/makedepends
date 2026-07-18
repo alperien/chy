@@ -1,0 +1,10 @@
+cairo
+glib
+gobject-introspection
+graphite
+gtk-doc
+libicu78
+libxml2
+meson
+ninja
+pkg-config

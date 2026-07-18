@@ -1,0 +1,14 @@
+origin: translated
+template: srcpkgs/zstd/template
+void-commit: d1d1ad9a411
+pkgver: zstd-1.5.7_1
+style: NONE
+dropped: check phase do_check
+dropped: vlicense in do_install
+expect-needed: libc.so.6
+expect-needed: libgcc_s.so.1
+expect-needed: liblz4.so.1
+expect-needed: liblzma.so.5
+expect-needed: libstdc++.so.6
+expect-needed: libz.so.1
+expect-needed: libzstd.so.1

@@ -1,0 +1,9 @@
+origin: handwritten
+date: 2026-05-22
+pkgver: bzip2-1.0.8_2
+rationale: no build_style; Void's do_install is 20 lines of manual shell
+rationale: plus a files/ pkg-config asset - outside the translator's idiom set
+template: srcpkgs/bzip2/template (mirrored by hand)
+expect-needed: libc.so.6
+note: patches/soname.patch (from Void) sets soname libbz2.so.1 - the ABI
+note: every Void-built consumer expects; digest cross-verified upstream vs mirror

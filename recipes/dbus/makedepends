@@ -1,0 +1,8 @@
+expat
+gettext
+libX11
+libcap
+meson
+ninja
+pkg-config
+xmlto

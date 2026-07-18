@@ -1,0 +1,19 @@
+#!/bin/sh -e
+meson setup build \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --libdir=lib \
+    --buildtype=release \
+    -Dselinux=disabled \
+    -Dinotify=enabled \
+    -Ddbus_user=dbus \
+    -Dxml_docs=enabled \
+    -Ddoxygen_docs=disabled \
+    -Depoll=enabled \
+    -Dasserts=false \
+    -Dsystemd=disabled \
+    -Duser_session=false \
+    -Dsystem_socket="$CHY_ROOT/run/dbus/system_bus_socket" \
+    -Dsystem_pid_file="$CHY_ROOT/run/dbus/pid"
+ninja -C build
+DESTDIR="$1" ninja -C build install

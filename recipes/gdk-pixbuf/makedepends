@@ -1,0 +1,11 @@
+gettext
+glib
+gobject-introspection
+libjpeg-turbo
+libpng
+meson
+ninja
+pkg-config
+python3-docutils
+shared-mime-info
+tiff

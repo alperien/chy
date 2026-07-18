@@ -1,0 +1,19 @@
+origin: translated
+template: srcpkgs/harfbuzz/template
+void-commit: f1bccfcc5bf1
+pkgver: harfbuzz-14.2.1_1
+style: meson
+dropped: build_helper qemu
+expect-needed: libc.so.6
+expect-needed: libcairo.so.2
+expect-needed: libfreetype.so.6
+expect-needed: libglib-2.0.so.0
+expect-needed: libgobject-2.0.so.0
+expect-needed: libharfbuzz-cairo.so.0
+expect-needed: libharfbuzz-gobject.so.0
+expect-needed: libharfbuzz-raster.so.0
+expect-needed: libharfbuzz-subset.so.0
+expect-needed: libharfbuzz-vector.so.0
+expect-needed: libharfbuzz.so.0
+expect-needed: libm.so.6
+expect-needed: libstdc++.so.6

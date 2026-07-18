@@ -1,0 +1,7 @@
+origin: translated
+template: srcpkgs/xz/template
+void-commit: 52969a86ccb1
+pkgver: xz-5.8.3_1
+style: gnu-configure
+expect-needed: libc.so.6
+expect-needed: liblzma.so.5

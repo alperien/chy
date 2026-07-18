@@ -1,0 +1,17 @@
+origin: translated
+template: srcpkgs/glib/template
+void-commit: 57d7adb4944d
+pkgver: glib-2.88.0_1
+style: meson
+dropped: build_helper qemu
+dropped: check phase post_check
+dropped: check phase pre_check
+dropped: hook post_install (pinned: introspection wrapper tooling (runtime-dark limit))
+dropped: hook post_patch (pinned: test-suite-only edits and a dead 32-bit guard)
+expect-needed: libc.so.6
+expect-needed: libelf.so.1
+expect-needed: libffi.so.7
+expect-needed: libm.so.6
+expect-needed: libmount.so.1
+expect-needed: libpcre2-8.so.0
+expect-needed: libz.so.1
