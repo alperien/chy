@@ -1,0 +1,19 @@
+#!/bin/sh -e
+meson setup build \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --libdir=lib \
+    --buildtype=release \
+    -Dx11_backend=true \
+    -Dwayland_backend=true \
+    -Dbroadway_backend=true \
+    -Dprint_backends=cups,file \
+    -Dcloudproviders=false \
+    -Dcolord=yes \
+    -Dgtk_doc=true \
+    -Dman=true \
+    -Dintrospection=true \
+    -Dexamples=false \
+    -Dtests=false
+ninja -C build
+DESTDIR="$1" ninja -C build install

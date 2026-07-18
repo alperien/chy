@@ -1,0 +1,11 @@
+#!/bin/sh -e
+./configure \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --includedir="$CHY_ROOT/usr/include" \
+    --with-pic
+make
+mkdir -p "$1$CHY_ROOT/usr/lib"
+ln -s lib "$1$CHY_ROOT/usr/lib64"
+make DESTDIR="$1" install
+rm -f "$1$CHY_ROOT/usr/lib64"

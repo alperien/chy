@@ -1,0 +1,11 @@
+origin: translated
+template: srcpkgs/fontconfig/template
+void-commit: 6eac8114ee94
+pkgver: fontconfig-2.17.1_1
+style: gnu-configure
+dropped: conf_files
+dropped: cross-build block in post_install
+dropped: vlicense in post_install
+expect-needed: libc.so.6
+expect-needed: libexpat.so.1
+expect-needed: libfreetype.so.6

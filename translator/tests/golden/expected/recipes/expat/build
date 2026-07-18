@@ -1,0 +1,6 @@
+#!/bin/sh -e
+./configure \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc"
+make
+make DESTDIR="$1" install

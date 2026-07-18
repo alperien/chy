@@ -1,0 +1,13 @@
+origin: translated
+template: srcpkgs/at-spi2-core/template
+void-commit: b08d539d7e6
+pkgver: at-spi2-core-2.56.5_1
+style: meson
+expect-needed: libX11.so.6
+expect-needed: libXi.so.6
+expect-needed: libXtst.so.6
+expect-needed: libc.so.6
+expect-needed: libdbus-1.so.3
+expect-needed: libgio-2.0.so.0
+expect-needed: libglib-2.0.so.0
+expect-needed: libgobject-2.0.so.0

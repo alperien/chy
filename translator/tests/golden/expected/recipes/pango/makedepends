@@ -1,0 +1,10 @@
+fribidi
+glib
+gobject-introspection
+harfbuzz
+libXft
+libthai
+meson
+ninja
+pkg-config
+python3-docutils

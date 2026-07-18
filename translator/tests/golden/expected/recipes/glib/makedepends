@@ -1,0 +1,16 @@
+dbus
+docbook-xsl
+elfutils
+gettext
+gi-docgen
+gobject-introspection
+libffi
+libxslt
+meson
+ninja
+pcre2
+pkg-config
+python3-docutils
+python3-packaging
+util-linux-common
+zlib

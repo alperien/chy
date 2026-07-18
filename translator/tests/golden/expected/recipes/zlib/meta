@@ -1,0 +1,6 @@
+origin: translated
+template: srcpkgs/zlib/template
+void-commit: 907942e6841
+pkgver: zlib-1.3.2_1
+style: configure
+expect-needed: libc.so.6

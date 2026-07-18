@@ -1,0 +1,11 @@
+dbus
+gettext
+glib
+gobject-introspection
+libSM
+libXext
+libXtst
+libxml2
+meson
+ninja
+pkg-config

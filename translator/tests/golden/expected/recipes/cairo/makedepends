@@ -1,0 +1,14 @@
+fontconfig
+freetype
+glib
+libX11
+libXext
+libXrender
+libpng
+libxcb
+lzo
+meson
+ninja
+pixman
+pkg-config
+zlib

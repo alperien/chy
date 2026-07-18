@@ -1,0 +1,11 @@
+#!/bin/sh -e
+./configure \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --enable-static \
+    --enable-docs \
+    --with-cache-dir="$CHY_ROOT/var/cache/fontconfig"
+make
+make DESTDIR="$1" install
+rm "$1$CHY_ROOT/usr/share/fontconfig/conf.avail/70-no-bitmaps.conf"
+ln -s 70-no-bitmaps-except-emoji.conf "$1$CHY_ROOT/usr/share/fontconfig/conf.avail/70-no-bitmaps.conf"

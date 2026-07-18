@@ -1,0 +1,8 @@
+origin: translated
+template: srcpkgs/libepoxy/template
+void-commit: 2de0b1a5d1
+pkgver: libepoxy-1.5.10_1
+style: meson
+dropped: vlicense in post_install
+expect-needed: libc.so.6
+expect-needed: libdl.so.2

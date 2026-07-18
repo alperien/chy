@@ -1,0 +1,9 @@
+origin: translated
+template: srcpkgs/pixman/template
+void-commit: 8df1f981006
+pkgver: pixman-0.46.4_1
+style: meson
+dropped: vlicense in post_install
+expect-needed: ld-linux-x86-64.so.2
+expect-needed: libc.so.6
+expect-needed: libm.so.6

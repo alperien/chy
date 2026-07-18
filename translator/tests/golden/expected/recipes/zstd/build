@@ -1,0 +1,6 @@
+#!/bin/sh -e
+make PREFIX="$CHY_PREFIX" lib-mt
+make PREFIX="$CHY_PREFIX" -C programs zstd-dll LIB_BINDIR=../lib
+make PREFIX="$CHY_PREFIX" -C contrib/pzstd
+make PREFIX="$CHY_PREFIX" DESTDIR="$1" install
+make -C contrib/pzstd PREFIX="$CHY_PREFIX" DESTDIR="$1" install

@@ -1,0 +1,14 @@
+#!/bin/sh -e
+meson setup build \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --libdir=lib \
+    --buildtype=release \
+    -Dman=true \
+    -Dselinux=disabled \
+    -Dintrospection=enabled \
+    -Ddocumentation=true \
+    --default-library=both \
+    -Db_lto=false
+ninja -C build
+DESTDIR="$1" ninja -C build install

@@ -1,0 +1,12 @@
+origin: translated
+template: srcpkgs/freetype/template
+void-commit: 2904d82fdd71
+pkgver: freetype-2.14.3_1
+style: gnu-configure
+dropped: vlicense in post_install
+pinned: harfbuzz=off
+expect-needed: libbrotlidec.so.1
+expect-needed: libbz2.so.1
+expect-needed: libc.so.6
+expect-needed: libpng16.so.16
+expect-needed: libz.so.1

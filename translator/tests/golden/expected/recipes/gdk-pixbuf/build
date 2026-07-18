@@ -1,0 +1,15 @@
+#!/bin/sh -e
+meson setup build \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc" \
+    --libdir=lib \
+    --buildtype=release \
+    -Dintrospection=enabled \
+    -Dpng=enabled \
+    -Djpeg=enabled \
+    -Dtiff=enabled \
+    -Dgif=enabled \
+    -Dothers=enabled \
+    -Dinstalled_tests=false
+ninja -C build
+DESTDIR="$1" ninja -C build install

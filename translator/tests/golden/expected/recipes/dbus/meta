@@ -1,0 +1,11 @@
+origin: translated
+template: srcpkgs/dbus/template
+void-commit: 3ce62704c2b
+pkgver: dbus-1.16.2_2
+style: meson
+dropped: conf_files
+dropped: system_accounts
+dropped: vsv in post_install
+expect-needed: libc.so.6
+expect-needed: libdbus-1.so.3
+expect-needed: libexpat.so.1
