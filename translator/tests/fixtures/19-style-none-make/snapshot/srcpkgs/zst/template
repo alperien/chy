@@ -1,0 +1,18 @@
+# Template file for 'zst'
+pkgname=zst
+version=1.0
+revision=1
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/zst"
+distfiles="https://example.org/dist/zst-${version}.tar.gz"
+checksum=bd3f98a47141692146cfee0a0a901433712f69591437f2510807a56035ac06f3
+
+do_build() {
+	make ${makejobs} PREFIX=/usr
+}
+
+do_install() {
+	make PREFIX=/usr DESTDIR=$DESTDIR install
+}

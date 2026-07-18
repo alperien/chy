@@ -1,0 +1,12 @@
+# Template file for 'rewr'
+pkgname=rewr
+version=1.0
+revision=1
+build_style=configure
+configure_args="--prefix=/usr --sysconfdir=/etc --libdir=/usr/lib --with-cache-dir=/var/x --localstatedir=/var/lib/rewr"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/rewr"
+distfiles="https://example.org/dist/rewr-${version}.tar.gz"
+checksum=6f9bf011e36e0c6bb4c68f14d33797d5365e852b5797fad342d2858b607202ef

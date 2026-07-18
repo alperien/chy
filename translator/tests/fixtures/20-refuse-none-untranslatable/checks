@@ -1,0 +1,3 @@
+exit :: 1
+stderr-refusal :: nonu :: do_install
+absent :: recipes/nonu

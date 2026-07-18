@@ -1,0 +1,12 @@
+# Template file for 'qem'
+pkgname=qem
+version=1.0
+revision=1
+build_style=gnu-configure
+build_helper="qemu"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/qem"
+distfiles="https://example.org/dist/qem-${version}.tar.gz"
+checksum=33452b25d8d04986562df83872f8f1a8b8ad5c64ea1e7417f91fdf94028fbe16

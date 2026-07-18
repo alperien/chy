@@ -1,0 +1,3 @@
+exit :: 1
+stderr-refusal :: hookc :: post_install
+absent :: recipes/hookc

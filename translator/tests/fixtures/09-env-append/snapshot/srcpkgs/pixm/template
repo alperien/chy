@@ -1,0 +1,12 @@
+# Template file for 'pixm'
+pkgname=pixm
+version=1.0
+revision=1
+build_style=gnu-configure
+LDFLAGS="-Wl,-z,relro"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/pixm"
+distfiles="https://example.org/dist/pixm-${version}.tar.gz"
+checksum=55f08c67c05f862652976226a6b599145abdb66dcd00c143aa926656e735ca83

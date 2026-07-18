@@ -1,0 +1,17 @@
+# Template file for 'hooka'
+pkgname=hooka
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/hooka"
+distfiles="https://example.org/dist/hooka-${version}.tar.gz"
+checksum=d0949b110ad75ace9d62e5eaf528c4839d08a70ff642e086f9eaa19a575e7e94
+
+post_install() {
+	vsed -e 's/old/new/' README.md
+	vinstall app.conf 644 usr/share/hooka
+	rm -f $DESTDIR/usr/lib/libhooka.la
+}

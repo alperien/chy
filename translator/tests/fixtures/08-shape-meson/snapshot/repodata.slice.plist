@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>meson</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>meson-1.0_1</string>
+		<key>source-revisions</key>
+		<string>meson:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>mez</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>mez-1.0_1</string>
+		<key>source-revisions</key>
+		<string>mez:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>ninja</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>ninja-1.0_1</string>
+		<key>source-revisions</key>
+		<string>ninja:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>pkg-config</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>pkg-config-1.0_1</string>
+		<key>source-revisions</key>
+		<string>pkg-config:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+</dict>
+</plist>

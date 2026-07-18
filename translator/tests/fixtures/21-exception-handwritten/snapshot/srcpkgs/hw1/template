@@ -1,0 +1,11 @@
+# Template file for 'hw1'
+pkgname=hw1
+version=9.9
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/hw1"
+distfiles="https://example.org/dist/hw1-${version}.tar.gz"
+checksum=39d27a78a05ef991c6592762f6f767c1974d70970c4e422f170479264c5ec5c4

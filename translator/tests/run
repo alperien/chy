@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+# translator/tests/run - black-box fixture runner for chytrans.
+#
+# Black box: the only surface exercised is the public one:
+#
+#     python3 translator/chytrans translate --snapshot DIR --out DIR NAME...
+#
+# Fixture convention is documented in translator/tests/README.md. This
+# runner never inspects the translator's internals: it runs the CLI on a
+# committed synthetic snapshot and holds the output tree to expectations
+# derived from committed expectations.
+#
+# Per case, always:
+#   - the translator runs TWICE into two fresh output roots (each seeded
+#     from pre/ when present); the two trees must be byte-identical
+#     (same snapshot in, byte-identical out)
+# - universal invariants are asserted: report, shlibs.map,
+#     provided.suggested exist; TRANSLATOR_VERSION exists non-empty;
+#     no recipe meta carries a "translator:" line; every recipe whose meta
+#     says "origin: translated" is a valid recipe shape
+#     (version/sources/checksums/build present, checksums pair with
+#     sources by significant-line count and are lowercase sha256 hex)
+#   - expect/ files (if any) must match the output byte-for-byte
+#   - checks directives (if any) must hold
+#
+# One PASS/FAIL line per case; exit 0 iff all pass. Python 3.9+, stdlib.
+
+import difflib
+import os
+import re
+import subprocess
+import sys
+import shutil
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
+CHYTRANS = os.path.join(ROOT, "translator", "chytrans")
+FIXTURES = os.path.join(HERE, "fixtures")
+
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class CheckFail(Exception):
+    pass
+
+
+def significant(text):
+    # Blank lines and lines starting with '#' are ignored.
+    return [ln for ln in text.splitlines()
+            if ln.strip() != "" and not ln.startswith("#")]
+
+
+def tree_map(root):
+    """relpath -> ("file", bytes) or ("link", target), for determinism
+    comparison. Directories appear implicitly via their contents."""
+    out = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        for fn in filenames:
+            p = os.path.join(dirpath, fn)
+            rel = os.path.relpath(p, root)
+            if os.path.islink(p):
+                out[rel] = ("link", os.readlink(p))
+            else:
+                with open(p, "rb") as f:
+                    out[rel] = ("file", f.read())
+        for dn in dirnames:
+            p = os.path.join(dirpath, dn)
+            if os.path.islink(p):
+                out[os.path.relpath(p, root)] = ("link", os.readlink(p))
+    return out
+
+
+def copy_pre(pre, out):
+    for dirpath, _dirnames, filenames in os.walk(pre):
+        for fn in filenames:
+            src = os.path.join(dirpath, fn)
+            rel = os.path.relpath(src, pre)
+            dst = os.path.join(out, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+
+
+class Ctx:
+    def __init__(self, out, rc, stdout, stderr):
+        self.out = out
+        self.rc = rc
+        self.stdout = stdout
+        self.stderr = stderr
+
+    def read(self, rel):
+        p = os.path.join(self.out, rel)
+        if not os.path.isfile(p):
+            raise CheckFail("output file missing: %s" % rel)
+        with open(p, "rb") as f:
+            return f.read().decode("utf-8", "replace")
+
+
+# ---- checks directives ------------------------------------------------
+
+def d_exit(ctx, want):
+    if ctx.rc != int(want):
+        raise CheckFail("exit code: got %d, want %s" % (ctx.rc, want))
+
+
+def d_stderr_refusal(ctx, name, token=None):
+    prefix = "chytrans: %s: refused: " % name
+    lines = [ln for ln in ctx.stderr.splitlines() if ln.startswith(prefix)]
+    if not lines:
+        raise CheckFail("no stderr line starts with [%s]" % prefix)
+    if token is not None and not any(token in ln for ln in lines):
+        raise CheckFail("refusal line for %s does not name [%s]" % (name, token))
+
+
+def d_stderr_matches(ctx, rx):
+    if not any(re.search(rx, ln) for ln in ctx.stderr.splitlines()):
+        raise CheckFail("no stderr line matches /%s/" % rx)
+
+
+def d_exists(ctx, rel):
+    if not os.path.exists(os.path.join(ctx.out, rel)):
+        raise CheckFail("expected to exist: %s" % rel)
+
+
+def d_absent(ctx, rel):
+    p = os.path.join(ctx.out, rel)
+    if os.path.exists(p) or os.path.islink(p):
+        raise CheckFail("expected to be absent: %s" % rel)
+
+
+def d_file_line(ctx, rel, line):
+    if line not in ctx.read(rel).splitlines():
+        raise CheckFail("%s: missing exact line [%s]" % (rel, line))
+
+
+def d_file_has(ctx, rel, sub):
+    if sub not in ctx.read(rel):
+        raise CheckFail("%s: missing substring [%s]" % (rel, sub))
+
+
+def d_file_not_has(ctx, rel, sub):
+    if sub in ctx.read(rel):
+        raise CheckFail("%s: forbidden substring present [%s]" % (rel, sub))
+
+
+def d_file_matches(ctx, rel, rx):
+    if not any(re.search(rx, ln) for ln in ctx.read(rel).splitlines()):
+        raise CheckFail("%s: no line matches /%s/" % (rel, rx))
+
+
+def d_file_first_line(ctx, rel, line):
+    lines = ctx.read(rel).splitlines()
+    if not lines:
+        raise CheckFail("%s: empty file" % rel)
+    if lines[0] != line:
+        raise CheckFail("%s: first line is [%s], want [%s]" % (rel, lines[0], line))
+
+
+def d_file_line_n(ctx, rel, n, line):
+    lines = ctx.read(rel).splitlines()
+    i = int(n)
+    if len(lines) < i:
+        raise CheckFail("%s: has %d lines, need line %d" % (rel, len(lines), i))
+    if lines[i - 1] != line:
+        raise CheckFail("%s: line %d is [%s], want [%s]" % (rel, i, lines[i - 1], line))
+
+
+def d_file_matches_n(ctx, rel, n, rx):
+    lines = ctx.read(rel).splitlines()
+    i = int(n)
+    if len(lines) < i:
+        raise CheckFail("%s: has %d lines, need line %d" % (rel, len(lines), i))
+    if not re.search(rx, lines[i - 1]):
+        raise CheckFail("%s: line %d [%s] does not match /%s/" % (rel, i, lines[i - 1], rx))
+
+
+def d_file_after(ctx, rel, first, then):
+    text = ctx.read(rel)
+    a, b = text.find(first), text.find(then)
+    if a < 0:
+        raise CheckFail("%s: anchor not found [%s]" % (rel, first))
+    if b < 0:
+        raise CheckFail("%s: expected content not found [%s]" % (rel, then))
+    if b < a:
+        raise CheckFail("%s: [%s] must come after [%s]" % (rel, then, first))
+
+
+def d_file_count(ctx, rel, sub, n):
+    got = sum(1 for ln in ctx.read(rel).splitlines() if sub in ln)
+    if got != int(n):
+        raise CheckFail("%s: %d lines contain [%s], want %s" % (rel, got, sub, n))
+
+
+DIRECTIVES = {
+    "exit": (d_exit, 1, 1),
+    "stderr-refusal": (d_stderr_refusal, 1, 2),
+    "stderr-matches": (d_stderr_matches, 1, 1),
+    "exists": (d_exists, 1, 1),
+    "absent": (d_absent, 1, 1),
+    "file-line": (d_file_line, 2, 2),
+    "file-has": (d_file_has, 2, 2),
+    "file-not-has": (d_file_not_has, 2, 2),
+    "file-matches": (d_file_matches, 2, 2),
+    "file-first-line": (d_file_first_line, 2, 2),
+    "file-line-n": (d_file_line_n, 3, 3),
+    "file-matches-n": (d_file_matches_n, 3, 3),
+    "file-after": (d_file_after, 3, 3),
+    "file-count": (d_file_count, 3, 3),
+}
+
+
+def run_checks(ctx, checks_path, fails):
+    with open(checks_path, "r", encoding="utf-8") as f:
+        for lineno, raw in enumerate(f, 1):
+            line = raw.rstrip("\n")
+            if line.strip() == "" or line.startswith("#"):
+                continue
+            parts = line.split(" :: ")
+            op, args = parts[0], parts[1:]
+            spec = DIRECTIVES.get(op)
+            if spec is None:
+                fails.append("checks:%d: unknown directive [%s]" % (lineno, op))
+                continue
+            fn, lo, hi = spec
+            if not lo <= len(args) <= hi:
+                fails.append("checks:%d: %s takes %d..%d args, got %d"
+                             % (lineno, op, lo, hi, len(args)))
+                continue
+            try:
+                fn(ctx, *args)
+            except CheckFail as e:
+                fails.append("checks:%d: %s" % (lineno, e))
+
+
+# ---- universal invariants ------------
+
+def universal(ctx, fails):
+    for rel in ("report", "shlibs.map", "provided.suggested", "TRANSLATOR_VERSION"):
+        if not os.path.isfile(os.path.join(ctx.out, rel)):
+            fails.append("universal: %s missing (a run emits it)" % rel)
+    tv = os.path.join(ctx.out, "TRANSLATOR_VERSION")
+    if os.path.isfile(tv) and os.path.getsize(tv) == 0:
+        fails.append("universal: TRANSLATOR_VERSION is empty")
+
+    recipes = os.path.join(ctx.out, "recipes")
+    if not os.path.isdir(recipes):
+        return
+    for name in sorted(os.listdir(recipes)):
+        rdir = os.path.join(recipes, name)
+        meta = os.path.join(rdir, "meta")
+        if not os.path.isfile(meta):
+            fails.append("universal: recipes/%s has no meta" % name)
+            continue
+        with open(meta, "rb") as f:
+            mlines = f.read().decode("utf-8", "replace").splitlines()
+        if any(ln.startswith("translator:") for ln in mlines):
+            fails.append("universal: recipes/%s/meta carries a translator: line "
+                         "(version is corpus-level only)" % name)
+        if "origin: translated" not in mlines:
+            continue # handwritten exceptions aren't validated here
+        for req in ("version", "sources", "checksums", "build"):
+            if not os.path.isfile(os.path.join(rdir, req)):
+                fails.append("universal: recipes/%s/%s missing"
+                             % (name, req))
+        srcs = os.path.join(rdir, "sources")
+        sums = os.path.join(rdir, "checksums")
+        if os.path.isfile(srcs) and os.path.isfile(sums):
+            with open(srcs, "rb") as f:
+                slines = significant(f.read().decode("utf-8", "replace"))
+            with open(sums, "rb") as f:
+                clines = significant(f.read().decode("utf-8", "replace"))
+            if len(slines) != len(clines):
+                fails.append("universal: recipes/%s: %d sources vs %d checksums"
+                             % (name, len(slines), len(clines)))
+            for ln in clines:
+                if not HEX64.match(ln):
+                    fails.append("universal: recipes/%s: checksum not lowercase "
+                                 "sha256 hex: [%s]" % (name, ln))
+
+
+def check_expect(ctx, expect_dir, fails):
+    for dirpath, _dirnames, filenames in os.walk(expect_dir):
+        for fn in filenames:
+            src = os.path.join(dirpath, fn)
+            rel = os.path.relpath(src, expect_dir)
+            got_p = os.path.join(ctx.out, rel)
+            with open(src, "rb") as f:
+                want = f.read()
+            if not os.path.isfile(got_p):
+                fails.append("expect: %s missing from output" % rel)
+                continue
+            with open(got_p, "rb") as f:
+                got = f.read()
+            if got != want:
+                diff = list(difflib.unified_diff(
+                    want.decode("utf-8", "replace").splitlines(),
+                    got.decode("utf-8", "replace").splitlines(),
+                    "want/" + rel, "got/" + rel, lineterm=""))[:14]
+                fails.append("expect: %s differs\n      %s"
+                             % (rel, "\n      ".join(diff)))
+
+
+def run_case(case_dir):
+    fails = []
+    with open(os.path.join(case_dir, "names"), "r", encoding="utf-8") as f:
+        names = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+    snap = os.path.join(case_dir, "snapshot")
+    pre = os.path.join(case_dir, "pre")
+
+    with tempfile.TemporaryDirectory(prefix="chytrans-test.") as td:
+        results = []
+        for i in (1, 2):
+            out = os.path.join(td, "out%d" % i)
+            os.makedirs(out)
+            if os.path.isdir(pre):
+                copy_pre(pre, out)
+            cmd = [sys.executable, CHYTRANS, "translate",
+                   "--snapshot", snap, "--out", out] + names
+            try:
+                proc = subprocess.run(cmd, cwd=td, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, timeout=180)
+            except subprocess.TimeoutExpired:
+                return ["translate run %d timed out (180s)" % i], ""
+            results.append((out, proc))
+
+        (out1, p1), (out2, p2) = results
+        ctx = Ctx(out1, p1.returncode,
+                  p1.stdout.decode("utf-8", "replace"),
+                  p1.stderr.decode("utf-8", "replace"))
+
+        # determinism: byte-identical re-run
+        t1, t2 = tree_map(out1), tree_map(out2)
+        if t1 != t2:
+            wrong = sorted(set(t1) ^ set(t2)
+                           | {r for r in set(t1) & set(t2) if t1[r] != t2[r]})
+            fails.append("determinism: re-run differs at: %s"
+                         % ", ".join(wrong[:5]))
+        if p1.returncode != p2.returncode:
+            fails.append("determinism: exit codes differ (%d vs %d)"
+                         % (p1.returncode, p2.returncode))
+
+        universal(ctx, fails)
+        expect_dir = os.path.join(case_dir, "expect")
+        if os.path.isdir(expect_dir):
+            check_expect(ctx, expect_dir, fails)
+        checks = os.path.join(case_dir, "checks")
+        if os.path.isfile(checks):
+            run_checks(ctx, checks, fails)
+
+        return fails, ctx.stderr
+
+
+def main():
+    if not os.path.isfile(CHYTRANS):
+        print("SKIP: translator/chytrans not present")
+        return 0
+    if not os.path.isdir(FIXTURES):
+        print("error: no fixtures directory at %s" % FIXTURES, file=sys.stderr)
+        return 2
+    cases = sorted(d for d in os.listdir(FIXTURES)
+                   if os.path.isfile(os.path.join(FIXTURES, d, "names")))
+    if not cases:
+        print("error: no fixture cases found", file=sys.stderr)
+        return 2
+
+    bad = 0
+    for case in cases:
+        fails, stderr = run_case(os.path.join(FIXTURES, case))
+        if not fails:
+            print("PASS %s" % case)
+            continue
+        bad += 1
+        print("FAIL %s" % case)
+        for f in fails:
+            print("    - %s" % f)
+        if stderr.strip():
+            print("    stderr (first 12 lines):")
+            for ln in stderr.splitlines()[:12]:
+                print("      | %s" % ln)
+    print("translator fixtures: %d/%d passed" % (len(cases) - bad, len(cases)))
+    return 0 if bad == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

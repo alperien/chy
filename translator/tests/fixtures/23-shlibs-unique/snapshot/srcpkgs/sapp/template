@@ -1,0 +1,11 @@
+# Template file for 'sapp'
+pkgname=sapp
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/sapp"
+distfiles="https://example.org/dist/sapp-${version}.tar.gz"
+checksum=72172c84ad1303749c35b441ec6ebc5bb35af86d33c685bcf3bb7b951731e076

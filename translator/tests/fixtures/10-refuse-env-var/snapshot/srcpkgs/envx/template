@@ -1,0 +1,12 @@
+# Template file for 'envx'
+pkgname=envx
+version=1.0
+revision=1
+build_style=gnu-configure
+FOO=bar
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/envx"
+distfiles="https://example.org/dist/envx-${version}.tar.gz"
+checksum=3df9d9f989412dd4c5152c25346e7b75714749dc116d7352e50284673e401ace

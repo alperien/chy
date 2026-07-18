@@ -1,0 +1,4 @@
+exit :: 1
+stderr-refusal :: vapp :: virtual
+file-matches :: report :: ^refused: vapp:
+absent :: recipes/vapp

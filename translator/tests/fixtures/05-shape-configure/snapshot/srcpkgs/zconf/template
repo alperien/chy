@@ -1,0 +1,12 @@
+# Template file for 'zconf'
+pkgname=zconf
+version=1.0
+revision=1
+build_style=configure
+configure_args="--prefix=/usr --shared"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/zconf"
+distfiles="https://example.org/dist/zconf-${version}.tar.gz"
+checksum=4f41e18ade10255533b018f19845bf7cf54f99ed45c199a4c72b70e3d5e780fa

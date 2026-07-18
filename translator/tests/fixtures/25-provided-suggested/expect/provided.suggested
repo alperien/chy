@@ -1,0 +1,5 @@
+meson meson
+ninja ninja
+pkg-config pkg-config
+xcore xcore
+xlib libx-devel,libx-tools

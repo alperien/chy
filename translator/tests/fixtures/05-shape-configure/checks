@@ -1,0 +1,4 @@
+exit :: 0
+file-line :: recipes/zconf/meta :: style: configure
+file-not-has :: recipes/zconf/build :: --sysconfdir
+file-count :: recipes/zconf/build :: --prefix :: 1

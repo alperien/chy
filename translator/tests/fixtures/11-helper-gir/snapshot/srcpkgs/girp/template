@@ -1,0 +1,12 @@
+# Template file for 'girp'
+pkgname=girp
+version=1.0
+revision=1
+build_style=meson
+build_helper="gir"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/girp"
+distfiles="https://example.org/dist/girp-${version}.tar.gz"
+checksum=16852b82a9dbd6da13e50a1be7eadf49abe2833c5cbd8e16a0b6a4cefa592fff

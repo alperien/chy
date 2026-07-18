@@ -1,0 +1,12 @@
+# Template file for 'optp'
+pkgname=optp
+version=1.0
+revision=1
+build_style=configure
+configure_args="--with-foo=/opt/x"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/optp"
+distfiles="https://example.org/dist/optp-${version}.tar.gz"
+checksum=792cf6ea877ce23f58dc11894c871d5d37e70b9b726aad62d1a3cf4b20c6fd9e

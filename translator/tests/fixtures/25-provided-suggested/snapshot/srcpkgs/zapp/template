@@ -1,0 +1,11 @@
+# Template file for 'zapp'
+pkgname=zapp
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/zapp"
+distfiles="https://example.org/dist/zapp-${version}.tar.gz"
+checksum=71e39140b252c7ba45789f66a0578bd1abee18f8531bd5d866a6c11f55b1e1ce

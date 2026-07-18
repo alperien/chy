@@ -1,0 +1,11 @@
+# Template file for 'vapp'
+pkgname=vapp
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/vapp"
+distfiles="https://example.org/dist/vapp-${version}.tar.gz"
+checksum=c49b4482aa523cd8cf6d846b88de4f7ba0d3849ee28861939b511fe0de990364

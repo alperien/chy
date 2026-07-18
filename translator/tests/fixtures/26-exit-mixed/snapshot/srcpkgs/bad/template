@@ -1,0 +1,11 @@
+# Template file for 'bad'
+pkgname=bad
+version=1.0
+revision=1
+build_style=waf
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/bad"
+distfiles="https://example.org/dist/bad-${version}.tar.gz"
+checksum=cfebd78e9804a31054145aa7461d0fcd357e31d5065d9995db444493d315370e

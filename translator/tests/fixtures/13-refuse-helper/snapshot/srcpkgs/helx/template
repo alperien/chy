@@ -1,0 +1,12 @@
+# Template file for 'helx'
+pkgname=helx
+version=1.0
+revision=1
+build_style=gnu-configure
+build_helper="rust"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/helx"
+distfiles="https://example.org/dist/helx-${version}.tar.gz"
+checksum=7b65d9fbd7175ae5a1d5853d5b6b7a20c10a99772019be809c9a5acdf6d1bda0

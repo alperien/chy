@@ -1,0 +1,12 @@
+exit :: 0
+file-line :: recipes/hooka/build :: sed -i -e 's/old/new/' README.md
+file-matches :: recipes/hooka/build :: ^install -Dm644 .*app\.conf
+file-has :: recipes/hooka/build :: "$1$CHY_ROOT/usr/share/hooka
+file-line :: recipes/hooka/build :: rm -f "$1$CHY_ROOT/usr/lib/libhooka.la"
+file-after :: recipes/hooka/build :: make DESTDIR="$1" install :: sed -i -e 's/old/new/' README.md
+file-after :: recipes/hooka/build :: sed -i -e 's/old/new/' README.md :: install -Dm644
+file-after :: recipes/hooka/build :: install -Dm644 :: rm -f "$1$CHY_ROOT/usr/lib/libhooka.la"
+file-not-has :: recipes/hooka/build :: vsed
+file-not-has :: recipes/hooka/build :: vinstall
+file-not-has :: recipes/hooka/build :: $DESTDIR
+file-count :: recipes/hooka/sources :: :// :: 1

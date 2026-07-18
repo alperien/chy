@@ -1,0 +1,3 @@
+exit :: 1
+stderr-refusal :: optp :: /opt/x
+absent :: recipes/optp

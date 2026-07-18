@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>barp</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>barp-1.0_1</string>
+		<key>shlib-provides</key>
+		<array>
+			<string>libbar.so.9</string>
+		</array>
+		<key>source-revisions</key>
+		<string>barp:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>enm</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>enm-1.0_1</string>
+		<key>run_depends</key>
+		<array>
+			<string>zlib&gt;=1.3.1_1</string>
+			<string>barp&gt;=0</string>
+			<string>foop&gt;=0</string>
+		</array>
+		<key>shlib-requires</key>
+		<array>
+			<string>libz.so.1</string>
+			<string>libbar.so.9</string>
+			<string>libfoo.so.2</string>
+		</array>
+		<key>source-revisions</key>
+		<string>enm:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>foop</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>foop-1.0_1</string>
+		<key>shlib-provides</key>
+		<array>
+			<string>libfoo.so.2</string>
+		</array>
+		<key>source-revisions</key>
+		<string>foop:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>zlib</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>zlib-1.3.1_1</string>
+		<key>shlib-provides</key>
+		<array>
+			<string>libz.so.1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>zlib:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+</dict>
+</plist>

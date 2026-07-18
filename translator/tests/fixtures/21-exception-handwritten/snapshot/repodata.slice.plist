@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>app</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>app-1.0_1</string>
+		<key>source-revisions</key>
+		<string>app:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>hw1</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>hw1-9.9_9</string>
+		<key>source-revisions</key>
+		<string>hw1:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+</dict>
+</plist>

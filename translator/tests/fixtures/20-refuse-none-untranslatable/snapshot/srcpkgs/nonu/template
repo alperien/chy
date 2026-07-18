@@ -1,0 +1,14 @@
+# Template file for 'nonu'
+pkgname=nonu
+version=1.0
+revision=1
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/nonu"
+distfiles="https://example.org/dist/nonu-${version}.tar.gz"
+checksum=ec6dc546b63010e54a503eb64830357415c569b0d80d9bc31021f66640fa2ce4
+
+do_install() {
+	./installer.sh --go
+}

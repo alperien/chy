@@ -1,0 +1,11 @@
+exit :: 0
+file-has :: recipes/mez/build :: meson setup build
+file-has :: recipes/mez/build :: --prefix="$CHY_PREFIX"
+file-has :: recipes/mez/build :: --sysconfdir="$CHY_ROOT/etc"
+file-has :: recipes/mez/build :: --libdir=lib
+file-has :: recipes/mez/build :: --buildtype=release
+file-has :: recipes/mez/build :: -Dfoo=enabled
+file-line :: recipes/mez/build :: ninja -C build
+file-line :: recipes/mez/build :: DESTDIR="$1" ninja -C build install
+file-after :: recipes/mez/build :: meson setup build :: ninja -C build
+file-line :: recipes/mez/meta :: style: meson

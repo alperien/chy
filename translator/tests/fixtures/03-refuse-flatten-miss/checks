@@ -1,0 +1,4 @@
+exit :: 1
+stderr-refusal :: mapp :: ghostlib
+file-matches :: report :: ^refused: mapp:.*ghostlib
+absent :: recipes/mapp

@@ -1,0 +1,12 @@
+# Template file for 'mez'
+pkgname=mez
+version=1.0
+revision=1
+build_style=meson
+configure_args="-Dfoo=enabled -Dbar=disabled"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/mez"
+distfiles="https://example.org/dist/mez-${version}.tar.gz"
+checksum=5e2d6142102dd68bb879d7649338ee4a225859aee38e2535a94015488aac7c3f

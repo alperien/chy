@@ -1,0 +1,4 @@
+exit :: 0
+file-matches :: recipes/hookb/meta :: ^dropped: .*vlicense
+file-not-has :: recipes/hookb/build :: vlicense
+file-not-has :: recipes/hookb/build :: COPYING

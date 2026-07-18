@@ -1,0 +1,6 @@
+exit :: 0
+file-line :: recipes/hookx/build :: sed -i -e 's/aa/bb/' data.txt
+file-not-has :: recipes/hookx/build :: CROSS_BUILD
+file-not-has :: recipes/hookx/build :: echo cross-only
+file-matches :: recipes/hookx/meta :: (?i)^dropped: .*cross
+file-after :: recipes/hookx/build :: make DESTDIR="$1" install :: sed -i -e 's/aa/bb/' data.txt

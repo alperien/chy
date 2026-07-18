@@ -1,0 +1,7 @@
+exit :: 0
+file-line :: recipes/shapea/meta :: origin: translated
+file-line :: recipes/shapea/meta :: style: gnu-configure
+file-line :: recipes/shapea/meta :: pkgver: shapea-1.0_1
+file-line :: recipes/shapea/meta :: void-commit: 1234567890abcdef1234567890abcdef12345678
+file-matches :: recipes/shapea/meta :: ^template: .*shapea
+file-line :: report :: translated: shapea

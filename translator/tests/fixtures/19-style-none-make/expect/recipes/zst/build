@@ -1,0 +1,2 @@
+make PREFIX="$CHY_PREFIX"
+make PREFIX="$CHY_PREFIX" DESTDIR="$1" install

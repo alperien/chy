@@ -1,0 +1,7 @@
+exit :: 0
+file-line :: recipes/enm/meta :: expect-needed: libbar.so.9
+file-line :: recipes/enm/meta :: expect-needed: libfoo.so.2
+file-line :: recipes/enm/meta :: expect-needed: libz.so.1
+file-count :: recipes/enm/meta :: expect-needed: :: 3
+file-after :: recipes/enm/meta :: expect-needed: libbar.so.9 :: expect-needed: libfoo.so.2
+file-after :: recipes/enm/meta :: expect-needed: libfoo.so.2 :: expect-needed: libz.so.1

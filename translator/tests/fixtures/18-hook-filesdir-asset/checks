@@ -1,0 +1,8 @@
+exit :: 0
+file-count :: recipes/hookf/sources :: :// :: 2
+file-matches-n :: recipes/hookf/sources :: 1 :: ^https://example\.org/dist/hookf-1\.0\.tar\.gz https://sources\.voidlinux\.org/hookf-1\.0/hookf-1\.0\.tar\.gz$
+file-matches-n :: recipes/hookf/sources :: 2 :: ^https://raw\.githubusercontent\.com/.*1234567890abcdef1234567890abcdef12345678/srcpkgs/hookf/files/asset\.conf$
+file-line-n :: recipes/hookf/checksums :: 1 :: 5d761edad03391f242bfdd2de5a974bf2f1ef41f3a6abc7ccc33f55f3d3914f9
+file-line-n :: recipes/hookf/checksums :: 2 :: 41ec482c7dc25d06b4689f677df9cf7c4ece502a5f75dc999c066275758fbfdf
+file-matches :: recipes/hookf/build :: ^install -Dm644 asset\.conf\s
+file-not-has :: recipes/hookf/build :: FILESDIR

@@ -1,0 +1,4 @@
+meson
+ninja
+pkg-config
+xlib

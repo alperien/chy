@@ -1,0 +1,18 @@
+# Template file for 'hookx'
+pkgname=hookx
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/hookx"
+distfiles="https://example.org/dist/hookx-${version}.tar.gz"
+checksum=a49fac0eebc7d33c02c660792719ab39aa556369cda68889074c08bc19912520
+
+post_install() {
+	vsed -e 's/aa/bb/' data.txt
+	if [ "$CROSS_BUILD" ]; then
+		echo cross-only
+	fi
+}

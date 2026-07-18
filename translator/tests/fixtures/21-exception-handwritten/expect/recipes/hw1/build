@@ -1,0 +1,2 @@
+# handwritten fixture build - these bytes must survive translator runs
+exit 1

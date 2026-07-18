@@ -1,0 +1,4 @@
+gobject-introspection
+meson
+ninja
+pkg-config

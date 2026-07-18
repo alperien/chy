@@ -1,0 +1,7 @@
+exit :: 1
+stderr-refusal :: bad :: waf
+stderr-matches :: ^chytrans: bad: refused: .+$
+exists :: recipes/good/build
+absent :: recipes/bad
+file-line :: report :: translated: good
+file-matches :: report :: ^refused: bad:

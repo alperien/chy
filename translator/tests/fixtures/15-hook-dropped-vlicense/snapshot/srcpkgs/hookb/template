@@ -1,0 +1,15 @@
+# Template file for 'hookb'
+pkgname=hookb
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/hookb"
+distfiles="https://example.org/dist/hookb-${version}.tar.gz"
+checksum=3059e2ae35a28fa21ee833ce565e3555300579d11b5355b707ab2e036fc2311c
+
+post_install() {
+	vlicense COPYING
+}

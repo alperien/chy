@@ -1,0 +1,10 @@
+exit :: 0
+file-has :: recipes/rewr/build :: --sysconfdir="$CHY_ROOT/etc"
+file-has :: recipes/rewr/build :: --with-cache-dir="$CHY_ROOT/var/x"
+file-has :: recipes/rewr/build :: --localstatedir="$CHY_ROOT/var/lib/rewr"
+file-has :: recipes/rewr/build :: --prefix="$CHY_PREFIX"
+file-count :: recipes/rewr/build :: --prefix :: 1
+file-not-has :: recipes/rewr/build :: --libdir
+file-not-has :: recipes/rewr/build :: =/usr
+file-not-has :: recipes/rewr/build :: =/etc
+file-not-has :: recipes/rewr/build :: =/var

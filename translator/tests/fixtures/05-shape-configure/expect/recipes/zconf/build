@@ -1,0 +1,5 @@
+./configure \
+    --prefix="$CHY_PREFIX" \
+    --shared
+make
+make DESTDIR="$1" install

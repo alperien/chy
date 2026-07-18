@@ -1,0 +1,4 @@
+exit :: 0
+file-line :: report :: exception: hw1
+file-line :: report :: translated: app
+exists :: recipes/app/build

@@ -1,0 +1,3 @@
+exit :: 1
+stderr-refusal :: helx :: rust
+absent :: recipes/helx
