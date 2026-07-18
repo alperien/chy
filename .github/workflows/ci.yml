@@ -30,7 +30,7 @@ jobs:
       image: ghcr.io/void-linux/void-glibc-full:latest
     steps:
       - name: prepare container
-        run: xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 brotli brotli-devel || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 brotli brotli-devel; }
+        run: xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 brotli brotli-devel bash || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 brotli brotli-devel bash; }
 
       - uses: actions/checkout@v4
 
