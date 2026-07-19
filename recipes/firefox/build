@@ -1,0 +1,17 @@
+#!/bin/sh -e
+# Mozilla's official, self-contained, relocatable build: the vendor built and tested this; compiling our
+# own would burn hours to arrive at a worse copy (kind: binary).
+
+dest="$1$CHY_ROOT/usr/lib/firefox"
+mkdir -p "$dest" "$1$CHY_ROOT/usr/bin"
+cp -a . "$dest"
+
+# launcher convention: vendor binaries carry no farm rpath;
+# LD_LIBRARY_PATH is how firefox reaches the chy-built gtk3 stack.
+cat > "$1$CHY_ROOT/usr/bin/firefox" <<LAUNCHER
+#!/bin/sh
+LD_LIBRARY_PATH="$CHY_PREFIX/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+exec "$CHY_PREFIX/lib/firefox/firefox" "\$@"
+LAUNCHER
+chmod 755 "$1$CHY_ROOT/usr/bin/firefox"

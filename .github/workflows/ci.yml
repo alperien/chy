@@ -36,3 +36,22 @@ jobs:
 
       - name: run the suite
         run: sh ./test
+
+  corpus:
+    name: corpus acceptance (gtk+3 -> firefox)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/void-linux/void-glibc-full:latest
+    steps:
+      - name: prepare container
+        run: xbps-install -Sy git ca-certificates || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates; }
+
+      - uses: actions/checkout@v4
+
+      - name: install the host stand-ins (tests/corpus-hostpkgs)
+        run: xbps-install -Sy $(grep -v '^#' tests/corpus-hostpkgs | tr '\n' ' ')
+
+      - name: corpus acceptance
+        run: CHY_CORPUS=1 sh tests/950-corpus.sh
