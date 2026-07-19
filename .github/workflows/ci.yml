@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: install the host stand-ins (tests/corpus-hostpkgs)
-        run: xbps-install -Sy $(grep -v '^#' tests/corpus-hostpkgs | tr '\n' ' ')
+        run: xbps-install -Syu $(grep -v '^#' tests/corpus-hostpkgs | tr '\n' ' ')
 
       - name: corpus acceptance
         run: CHY_CORPUS=1 sh tests/950-corpus.sh
