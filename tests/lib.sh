@@ -248,6 +248,70 @@ assert_not_requested() { # root name
     assert_absent "$1/db/installed/$2/requested"
 }
 
+# --- hermetic ELF fixtures (for verify, and doctor check 1) ---
+#
+# No compiler is assumed. To get an ELF with an unresolvable NEEDED entry,
+# copy a dynamically linked host binary and byte-patch ONE of its NEEDED
+# sonames to an equal-length name that exists nowhere; plain ldd then
+# reports `<fake> => not found` - exactly the condition step 11 and
+# doctor's check 1 must surface. Fixtures are built at test runtime (never
+# committed) and verified with ldd before use; a host offering no usable
+# template makes the caller SKIP, never fail.
+
+# elf_template_init - find a host ELF with a patchable NEEDED soname.
+# Sets ELF_TEMPLATE (the binary) and ELF_SONAME (the NEEDED entry to
+# patch: 12+ chars so generated fakes fit, never libc or the loader).
+# Returns 1 when the host offers none.
+elf_template_init() {
+    ELF_TEMPLATE='' ELF_SONAME=''
+    command -v ldd >/dev/null 2>&1 || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    for et_cand in /usr/bin/awk /usr/bin/xz /usr/bin/tar /usr/bin/curl \
+        /usr/bin/wget /bin/bash /usr/bin/python3 /bin/ls /usr/bin/find \
+        /usr/bin/sort /usr/bin/env /bin/cat; do
+        [ -f "$et_cand" ] || continue
+        et_so=$(ldd "$et_cand" 2>/dev/null | awk '
+            $2 == "=>" && $3 ~ /^\// && length($1) >= 12 &&
+            $1 !~ /^libc\./ && $1 !~ /^ld-/ { print $1; exit }')
+        if [ -n "$et_so" ]; then
+            ELF_TEMPLATE=$et_cand ELF_SONAME=$et_so
+            return 0
+        fi
+    done
+    return 1
+}
+
+# elf_fake_soname TAG - print a fake soname exactly as long as
+# ELF_SONAME: "libchy<TAG>", padded with x, ending ".so". Distinct TAGs
+# order the fakes byte-wise (a < b < ...).
+elf_fake_soname() {
+    efs_base="libchy$1"
+    efs_want=$((${#ELF_SONAME} - 3))
+    while [ ${#efs_base} -lt "$efs_want" ]; do
+        efs_base="${efs_base}x"
+    done
+    printf '%s.so' "$efs_base"
+}
+
+# mk_needy_elf OUT FAKE - copy ELF_TEMPLATE to OUT with ELF_SONAME
+# byte-patched to FAKE (equal length), mode 755, then verify with plain
+# ldd that FAKE is reported not found. Once a template was chosen the
+# technique must work, so any mismatch fails the test.
+mk_needy_elf() {
+    python3 - "$ELF_TEMPLATE" "$1" "$ELF_SONAME" "$2" <<'PYEOF' || fail "byte-patching $1 failed"
+import sys
+src, dst, old, new = sys.argv[1:5]
+data = open(src, 'rb').read()
+o, n = old.encode(), new.encode()
+assert len(o) == len(n), 'fake soname length mismatch'
+assert o in data, 'template lost its NEEDED string'
+open(dst, 'wb').write(data.replace(o, n))
+PYEOF
+    chmod 755 "$1"
+    ldd "$1" 2>/dev/null | grep -F -- "$2" | grep -q 'not found' \
+        || fail "host ldd does not report $2 as not found in $1"
+}
+
 # mktgz OUT DIR ENTRY... - a real gzipped tarball of DIR's ENTRYs.
 mktgz() {
     mt_out=$1 mt_dir=$2
