@@ -1,5 +1,5 @@
 # xbps packages the corpus job installs - generated from
-# provided.suggested hint columns + firefox runtime extras.
+# provided.suggested hint columns + toolchain + firefox runtime extras.
 MesaLib-devel
 SPIRV-LLVM-Translator21
 acl
@@ -8,6 +8,7 @@ alsa-lib
 avahi-libs
 avahi-libs-devel
 bash
+binutils
 brotli
 brotli-devel
 c-ares
@@ -15,6 +16,7 @@ ca-certificates
 clang21-headers
 colord-devel
 cups-devel
+curl
 dejavu-fonts-ttf
 docbook-xml
 docbook-xsl
@@ -23,6 +25,7 @@ eudev-libudev
 eudev-libudev-devel
 fribidi
 fribidi-devel
+gcc
 gdbm
 gettext
 gettext-devel
@@ -170,6 +173,7 @@ libxslt
 libz3
 lzo
 lzo-devel
+make
 mesa
 mesa-libgallium
 mesa-opencl
@@ -186,6 +190,7 @@ openssl
 openssl-devel
 p11-kit
 p11-kit-devel
+patch
 perl
 pkg-config
 public-suffix
@@ -229,3 +234,4 @@ xmlto
 xorg-util-macros
 xorgproto
 xtrans
+xz
