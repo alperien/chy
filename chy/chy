@@ -4,13 +4,16 @@
 # One file. POSIX sh. Readable in one sitting. The state is the filesystem.
 # $CHY_ROOT defines the world; nothing else knows where things live.
 #
-# the resolver. install walks depends+makedepends, checks
-# conflicts, and builds in the unique smallest valid order; remove guards
-# against reverse dependencies and cascades orphans with -r. Sources are
-# fetched and verified, built into store/<name>-<version>/, linked into
-# the usr/ symlink farm, and recorded under db/installed/.
+# the truth after install. install walks depends+makedepends,
+# checks conflicts, and builds in the unique smallest valid order; after
+# linking, runtime verification runs ldd over the new ELFs and warns
+# about unresolved libraries; doctor re-runs that scan over every
+# installed package and audits manifests for broken, missing, or foreign
+# farm links. Sources are fetched and verified, built into
+# store/<name>-<version>/, linked into the usr/ symlink farm, and
+# recorded under db/installed/.
 
-CHY_VERSION=0.2.0
+CHY_VERSION=0.3.0
 set -u
 
 # --------------------------------------------------------------- output --
@@ -33,6 +36,7 @@ usage:
                         unlink and delete packages; -r cascades orphans
   chy list [name...]    list installed packages
   chy provided          list host-provided package names
+  chy doctor            report unresolved libraries and manifest drift
   chy version           print chy's version
 
 \$CHY_ROOT selects the root (default: \$HOME/.chy).
@@ -138,11 +142,15 @@ recipe_check() { # recipe_check <name>
         [ -f "$R_DIR/$rc_f" ] || fail "$1" "recipe missing required file: $rc_f"
     done
 
-    # kind: absent means source; nothing else is accepted yet.
+    # kind: absent means source; binary is a provenance marker - the
+    # pipeline is identical (the launcher convention binds the recipe,
+    # not chy). Anything else is an error naming the kind.
     if [ -f "$R_DIR/kind" ]; then
         rc_kind=
         read -r rc_kind <"$R_DIR/kind" || :
-        [ "$rc_kind" = source ] || fail "$1" "unsupported kind: ${rc_kind:-(empty)}"
+        case $rc_kind in source|binary) ;;
+            *) fail "$1" "unsupported kind: ${rc_kind:-(empty)}" ;;
+        esac
     fi
 
     # version: one line, "<version>" or "<version> <revision>".
@@ -465,6 +473,53 @@ write_db() { # write_db <name> <requested: 1|0>
     [ "$2" -ne 1 ] || : >"$wd_db/requested"
 }
 
+# ------------------------------------------------- runtime verification --
+# The pinned ELF scan: every
+# lstat-regular file under $1 whose first four bytes are the ELF magic
+# is fed to ldd once, with $CHY_ROOT/usr/lib prepended to
+# LD_LIBRARY_PATH - verification sees exactly what a launched program
+# will see. A missing library is a line whose fields 2-4 are literally
+# "=> not found" (field 1 the soname); ldd's exit status and all other
+# output are ignored. Output: the distinct missing sonames, one per
+# line, byte-sorted, each with shlib_hint appended.
+
+ELF_MAGIC=$(printf '\177ELF')
+
+shlib_hint() { # " (package: <pkg>)" when shlibs.map knows the soname
+    [ -f "$CHY_ROOT/shlibs.map" ] || return 0
+    sh_pkg=$(sig_lines "$CHY_ROOT/shlibs.map" |
+        LC_ALL=C awk -v s="$1" '$1 == s { print $2; exit }')
+    [ -z "$sh_pkg" ] || printf ' (package: %s)\n' "$sh_pkg"
+}
+
+scan_needs() { # scan_needs <store entry dir>
+    [ -d "$1" ] || return 0
+    find "$1" -type f -print | while IFS= read -r sn_f; do
+        sn_head=                        # the shell itself reads the magic:
+        { IFS= read -r sn_head <"$sn_f"; } 2>/dev/null || : # no per-file
+        case $sn_head in "$ELF_MAGIC"*) ;; *) continue ;; esac      # spawn
+        LD_LIBRARY_PATH="$CHY_ROOT/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+            ldd "$sn_f" 2>/dev/null || :
+    done | LC_ALL=C awk '$2 == "=>" && $3 == "not" && $4 == "found" { print $1 }' |
+        LC_ALL=C sort -u | while IFS= read -r sn_s; do
+            printf '%s%s\n' "$sn_s" "$(shlib_hint "$sn_s")"
+        done
+}
+
+# Step 11: after linking, before the db write. Warnings only - they
+# never affect exit and never undo the install; the files stay placed
+# and linked, and the warning is the truth about what more the runtime
+# needs.
+verify_runtime() { # verify_runtime <name>
+    if ! command -v ldd >/dev/null 2>&1; then
+        warn "$1" 'ldd unavailable; runtime verification skipped'
+        return 0
+    fi
+    scan_needs "$CHY_ROOT/store/$1-$R_VER" | while IFS= read -r vr_s; do
+        warn "$1" "needs $vr_s"
+    done
+}
+
 # --------------------------------------------------------------- remove --
 # Prune directories that became empty, walking one unlinked path's parent
 # chain upward; $CHY_ROOT's top-level entries themselves are never removed.
@@ -556,7 +611,8 @@ do_install() { # do_install <name> <requested: 1|0>
     ln -s "$1-$R_VER" "$CHY_ROOT/store/$1" ||      # 9: point the alias
         fail "$1" "cannot point the alias"
     link_farm "$1"                                 # 10
-    write_db "$1" "$2"                             # 11
+    verify_runtime "$1"                            # 11: warnings only
+    write_db "$1" "$2"                             # 12
     say "$1" "installed $R_VER $R_REV"
 }
 
@@ -897,6 +953,68 @@ cmd_list() {
     exit "$cl_bad"
 }
 
+# --------------------------------------------------------------- doctor --
+# The truth report. Read-only: creates no directories, absent
+# ones are empty. Per installed package in name order, three checks emit
+# in order, at most one finding per manifest path: (1) the step-11 ELF
+# scan over the store entry, (2) owned farm symlinks whose target does
+# not resolve, (3) manifest drift - absent by lstat, or present but not
+# our own symlink. Checks 2 and 3 walk the manifest in stored order.
+doctor_scan() {
+    dsc_ldd=1
+    if ! command -v ldd >/dev/null 2>&1; then
+        dsc_ldd=0
+        warn doctor 'ldd unavailable; runtime verification skipped'
+    fi
+    for ds_d in "$CHY_ROOT/db/installed/"*; do
+        [ -f "$ds_d/version" ] || continue
+        printf '%s\n' "${ds_d##*/}"
+    done | LC_ALL=C sort | while IFS= read -r ds_p; do
+        ds_v='' ds_m=$CHY_ROOT/db/installed/$ds_p/manifest
+        read -r ds_v _ <"$CHY_ROOT/db/installed/$ds_p/version" || :
+
+        [ "$dsc_ldd" -eq 0 ] ||                    # 1: unresolved libraries
+            scan_needs "$CHY_ROOT/store/$ds_p-$ds_v" |
+                while IFS= read -r ds_s; do
+                    printf 'chy: doctor: %s: needs %s\n' "$ds_p" "$ds_s"
+                done
+
+        [ -f "$ds_m" ] || continue
+        while IFS= read -r ds_mp; do               # 2: broken farm links
+            [ -n "$ds_mp" ] || continue
+            [ -L "$CHY_ROOT/$ds_mp" ] || continue
+            [ "$(owner_of "$CHY_ROOT/$ds_mp")" = "$ds_p" ] || continue
+            [ -e "$CHY_ROOT/$ds_mp" ] ||
+                printf 'chy: doctor: %s: broken link %s\n' "$ds_p" "$ds_mp"
+        done <"$ds_m"
+        while IFS= read -r ds_mp; do               # 3: manifest drift
+            [ -n "$ds_mp" ] || continue
+            if [ -L "$CHY_ROOT/$ds_mp" ]; then
+                [ "$(owner_of "$CHY_ROOT/$ds_mp")" = "$ds_p" ] ||
+                    printf 'chy: doctor: %s: foreign %s\n' "$ds_p" "$ds_mp"
+            elif [ -e "$CHY_ROOT/$ds_mp" ]; then
+                printf 'chy: doctor: %s: foreign %s\n' "$ds_p" "$ds_mp"
+            else
+                printf 'chy: doctor: %s: missing %s\n' "$ds_p" "$ds_mp"
+            fi
+        done <"$ds_m"
+    done
+}
+
+cmd_doctor() {
+    [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+    require doctor readlink
+    cd_out=$(doctor_scan)
+    if [ -z "$cd_out" ]; then
+        printf 'chy: doctor: clean\n'
+        exit 0
+    fi
+    printf '%s\n' "$cd_out"
+    printf 'chy: doctor: %s problem(s)\n' \
+        "$(( $(printf '%s\n' "$cd_out" | wc -l) ))"
+    exit 1
+}
+
 # ------------------------------------------------------------- dispatch --
 check_root
 
@@ -907,5 +1025,6 @@ case ${1-} in
     remove)       shift; cmd_remove "$@" ;;
     list)         shift; cmd_list "$@" ;;
     provided)     shift; cmd_provided "$@" ;;
+    doctor)       shift; cmd_doctor "$@" ;;
     *)            usage >&2; exit 2 ;;
 esac
