@@ -68,13 +68,14 @@ printf '1.0\n' >"$r/dupbase/version"
 } >"$r/dupbase/checksums"
 printf 'set -eu\n' >"$r/dupbase/build"
 
-# --- recipe: kind other than source is rejected, naming the kind ---
+# --- recipe: kind other than source/binary is rejected, naming the kind
+#     (tests/600 covers the accepted `binary` kind) ---
 mkdir -p "$r/kindbad"
 printf '1.0\n' >"$r/kindbad/version"
 printf 'file://%s/trap-kind.txt\n' "$traps" >"$r/kindbad/sources"
 sha_of "$traps/trap-kind.txt" >"$r/kindbad/checksums"
 printf 'set -eu\n' >"$r/kindbad/build"
-printf 'binary\n' >"$r/kindbad/kind"
+printf 'wobbly\n' >"$r/kindbad/kind"
 
 # --- recipe: version with a hyphen violates the version grammar ---
 mkdir -p "$r/badver"
@@ -111,8 +112,8 @@ assert_absent "$CHY_ROOT/cache/trap-mm2.txt"
 check_invalid dupbase 'colliding source basenames'
 assert_absent "$CHY_ROOT/cache/dup.txt"
 
-check_invalid kindbad 'kind=binary is rejected'
-file_has "$ERR" 'binary'
+check_invalid kindbad 'kind=wobbly is rejected'
+file_has "$ERR" 'wobbly'
 assert_absent "$CHY_ROOT/cache/trap-kind.txt"
 
 check_invalid badver 'hyphenated version is invalid'
