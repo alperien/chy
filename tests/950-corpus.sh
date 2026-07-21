@@ -33,7 +33,11 @@ printf 'alsa-lib\ngcc\n' >> "$CHY_ROOT/db/provided"
 
 echo "== chy install firefox =="
 if ! sh chy/chy install firefox > "$work/out" 2> "$work/err"; then
-    echo "corpus install FAILED"; tail -40 "$work/out" "$work/err"; exit 1
+    echo "corpus install FAILED - stdout tail:"
+    tail -n 40 "$work/out"
+    echo "- stderr tail:"
+    tail -n 40 "$work/err"
+    exit 1
 fi
 grep '^chy: order: ' "$work/out"
 if grep '^chy: .*: warning: needs' "$work/err"; then
