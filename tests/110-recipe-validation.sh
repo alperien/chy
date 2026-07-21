@@ -127,9 +127,9 @@ file_has_line "$ERR" \
     'chy: install: error: needs nosuchpkg, which has no recipe and is not provided'
 
 # --- an argument that is not a legal package name fails with exit 1 ---
-run_chy install BadName
+run_chy install .badname
 assert_rc 1 'uppercase is not a legal package name'
-file_matches "$ERR" '^chy: BadName: error: '
+file_matches "$ERR" '^chy: .badname: error: '
 
 # nothing above may have touched the root
 assert_eq "$(snap "$CHY_ROOT")" "$snap0" 'invalid recipes leave the root as it was'

@@ -993,7 +993,7 @@ def _build_meta(name, entry, style, dropped, pinned):
 # chytrans validates its own output before writing; a bug in our emission
 # must be as loud as a bad template (refusal, nothing written).
 
-_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9+._-]*$')
+_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9+._-]*$') # uppercase is legal
 _VERSION_RE = re.compile(r'^[A-Za-z0-9._+]+$')
 
 
