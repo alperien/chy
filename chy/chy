@@ -494,6 +494,13 @@ shlib_hint() { # " (package: <pkg>)" when shlibs.map knows the soname
 
 scan_needs() { # scan_needs <store entry dir>
     [ -d "$1" ] || return 0
+    # Sonames the package ships itself are satisfied at runtime via the
+    # launcher convention / a source ELF's own farm rpath ($ORIGIN for
+    # vendor trees): a library cross-referencing its siblings is not a
+    # missing dependency, so exclude every soname the entry provides.
+    sn_own=$(find "$1" \( -type f -o -type l \) -name '*.so*' 2>/dev/null |
+        while IFS= read -r sn_o; do printf '%s\n' "${sn_o##*/}"; done |
+        LC_ALL=C sort -u)
     find "$1" -type f -print | while IFS= read -r sn_f; do
         sn_head=                        # the shell itself reads the magic:
         { IFS= read -r sn_head <"$sn_f"; } 2>/dev/null || : # no per-file
@@ -502,6 +509,7 @@ scan_needs() { # scan_needs <store entry dir>
             ldd "$sn_f" 2>/dev/null || :
     done | LC_ALL=C awk '$2 == "=>" && $3 == "not" && $4 == "found" { print $1 }' |
         LC_ALL=C sort -u | while IFS= read -r sn_s; do
+            printf '%s\n' "$sn_own" | LC_ALL=C grep -qxF "$sn_s" && continue
             printf '%s%s\n' "$sn_s" "$(shlib_hint "$sn_s")"
         done
 }
