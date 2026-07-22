@@ -1,7 +1,7 @@
 #!/bin/sh
 # The corpus acceptance, in one script.
 #
-# Heavy by design: builds the FULL translated corpus closure from source
+# Heavy: builds the full translated corpus closure from source
 # by asking for one thing - firefox - whose depends pull gtk+3, which
 # pulls everything else. Then: the drift check (built ELF
 # NEEDED vs each recipe's expect-needed ledger), chy doctor, and the
@@ -31,7 +31,7 @@ cp "$repo/shlibs.map" "$CHY_ROOT/shlibs.map"
 awk 'NF {print $1}' "$repo/provided.suggested" > "$CHY_ROOT/db/provided"
 printf 'alsa-lib\ngcc\n' >> "$CHY_ROOT/db/provided"
 
-echo "== chy install firefox (binary kind) =="
+echo "== install firefox (binary kind) =="
 # firefox's 21 runtime deps are the gtk+3 stack; they
 # are "built OR declared host-provided". Here the host (the Void
 # container, via xbps) provides them - this is the provided model at
