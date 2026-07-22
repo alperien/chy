@@ -3,8 +3,8 @@
 #
 # Sourced by every test after `cd` to the repo root. POSIX sh, no local.
 # Everything here works from chy's promised behavior; tests never look at
-# chy's internals. Hermetic by construction: source files are pre-seeded
-# into "$CHY_ROOT/cache" so a verified cache hit never downloads,
+# chy's internals. Hermetic: source files are pre-seeded into
+# "$CHY_ROOT/cache" so a verified cache hit never downloads,
 # and URLs that must fail use the unreachable http://127.0.0.1:9/.
 
 CHY="$PWD/chy/chy"
@@ -253,7 +253,7 @@ assert_not_requested() { # root name
 # No compiler is assumed. To get an ELF with an unresolvable NEEDED entry,
 # copy a dynamically linked host binary and byte-patch ONE of its NEEDED
 # sonames to an equal-length name that exists nowhere; plain ldd then
-# reports `<fake> => not found` - exactly the condition step 11 and
+# reports `<fake> => not found`, which is the condition step 11 and
 # doctor's check 1 must surface. Fixtures are built at test runtime (never
 # committed) and verified with ldd before use; a host offering no usable
 # template makes the caller SKIP, never fail.

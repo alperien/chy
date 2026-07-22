@@ -1,9 +1,10 @@
 #!/bin/sh
-# conflicts are detected from the normalized tree before the store
-# or farm is touched - the whole install links or none of it does. File
-# paths owned by another package, and directory paths occupied by anything
-# that is not a real directory, are conflicts. Ownership is string equality
-# on the whole path component after store/ - "foo" never owns "foo-bar".
+# conflicts are found on the normalized tree before store or farm is
+# touched, so the whole install links or none of it does. File paths
+# owned by another package, and directory paths occupied by anything
+# that isn't a real directory, are conflicts. Ownership is string
+# equality on the whole component after store/ ("foo" never owns
+# "foo-bar").
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

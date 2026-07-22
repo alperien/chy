@@ -1,8 +1,8 @@
 #!/bin/sh
-# the names `install` and `order` are reserved - they collide
-# with reserved output scopes - and are rejected like any illegal name:
-# exit 1. an unknown flag is a usage error, usage on stderr,
-# exit 2, and each verb owns only its own flag.
+# the names `install` and `order` are reserved (they collide with
+# reserved output scopes) and get rejected like any illegal name:
+# exit 1. An unknown flag is a usage error, usage on stderr, exit 2,
+# and each verb owns only its own flag.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

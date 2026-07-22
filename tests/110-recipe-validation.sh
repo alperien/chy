@@ -1,8 +1,8 @@
 #!/bin/sh
-# recipe invalidity fails the install with exit 1 BEFORE any
-# fetching begins. Each invalid recipe here carries a reachable file:// URL
-# whose payload really exists: if chy fetched before validating, the file
-# would land in cache/ and the test would catch it.
+# invalid recipes fail the install (exit 1) before any fetching. Each
+# bad recipe here carries a reachable file:// URL with a real payload:
+# if chy fetched before validating, the file would land in cache/ and
+# we'd see it.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

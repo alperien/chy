@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""chytrans - turn Void Linux package data into chy recipes.
+"""Turn Void Linux package data into chy recipes.
 
     chytrans snapshot --out DIR NAME...             (network)
     chytrans translate --snapshot DIR --out DIR NAME...   (offline)
@@ -36,7 +36,7 @@ class _SliceMiss(Exception):
 
 def _is_handwritten(outroot, name):
     """True when recipes/<name>/meta under the output root says
-    'origin: handwritten' - the short-circuit: never attempted,
+    'origin: handwritten'.  The handwritten short-circuit: never attempted,
     never overwritten."""
     meta = os.path.join(outroot, "recipes", name, "meta")
     if not os.path.isfile(meta):
@@ -70,8 +70,8 @@ def _normalize_dump(dump_root, name):
 def _package_references(name, snap, dump_root, result):
     """Every binary package name this recipe referenced: its repodata
     run_depends, its evaluated hostmakedepends+makedepends, and the
-    Injected tools - parsed, libc and virtual dropped.  These are
-    the hint column's raw material."""
+    Injected tools (parsed; libc and virtual dropped).  Raw
+    material for the provided.suggested hints."""
     refs = set()
     for token in snap.slice[name].get("run_depends", []):
         dep, kind = repodata.parse_dep(token)
@@ -126,8 +126,8 @@ def _provided_contrib(name, result, snap, dump_root):
         for token in entry.get("run_depends", []):
             dep, kind = repodata.parse_dep(token)
             if kind == "virtual":
-                # Unresolvable by design; none occur in the
-                # corpus closure.  Loud but not fatal here.
+                # Not resolvable; none occur in the
+                # corpus closure.  Warn and keep going.
                 sys.stderr.write("chytrans: warning: %s: skipping virtual"
                                  " dependency %s in provided closure\n"
                                  % (name, token))
@@ -227,7 +227,7 @@ def cmd_translate(args):
             shutil.rmtree(dump_root, ignore_errors=True)
 
     # Corpus-level outputs: shlibs.map, provided.suggested, report,
-    # TRANSLATOR_VERSION - deterministic, everything sorted.
+    # TRANSLATOR_VERSION.  Deterministic, everything sorted.
     map_lines, ambiguous = repodata.shlibs_map_with_ambiguities(
         snap.slice, snap.shlibs)
     _write_lines(os.path.join(outroot, "shlibs.map"), map_lines)

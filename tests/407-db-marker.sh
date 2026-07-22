@@ -1,7 +1,7 @@
 #!/bin/sh
-# the `requested` marker - an empty file, present iff the package
-# was named on the command line at install time. Dependency installs never
-# set it; reinstalling by name sets it; a satisfied dependency is skipped,
+# the `requested` marker is an empty file, present iff the package was
+# named on the command line at install time. Dependency installs never
+# set it, reinstalling by name does. A satisfied dependency is skipped,
 # so its marker is never touched. The recipe's `conflicts` is copied
 # verbatim into the db.
 set -eu

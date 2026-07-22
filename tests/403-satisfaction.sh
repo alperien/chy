@@ -1,6 +1,6 @@
 #!/bin/sh
-# a walked dependency is satisfied - added to nothing, subtree
-# not entered - when already installed or listed in db/provided. A dep
+# a walked dependency is satisfied (added to nothing, subtree
+# not entered) when already installed or listed in db/provided. A dep
 # that IS being built pulls its own makedepends like any dependency.
 set -eu
 cd "$(dirname "$0")/.." || exit 2

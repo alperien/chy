@@ -1,8 +1,8 @@
 #!/bin/sh
-# normalization - store entries are $CHY_ROOT-relative (top level
-# usr/, never a deep mirror); staging outside $1$CHY_ROOT, staging nothing,
-# and DESTDIR-baked symlink targets are errors that leave the root as it
-# was. Name/version collisions on store paths fail rather than guess.
+# normalization: store entries are $CHY_ROOT-relative (top level usr/,
+# never a deep mirror). Staging outside $1$CHY_ROOT, staging nothing,
+# and DESTDIR-baked symlink targets are errors that leave the root as
+# it was. Name/version clashes on store paths stop instead of guessing.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

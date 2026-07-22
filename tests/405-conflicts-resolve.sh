@@ -2,7 +2,7 @@
 # resolution-time conflicts. A needed package's recipe
 # conflicts naming an installed package, an installed package's
 # DB-RECORDED conflicts naming a needed package (the recipe may be long
-# gone), and needed-vs-needed pairs - every violating pair prints one
+# gone), and needed-vs-needed pairs. Every violating pair prints one
 # pinned line, sorted by <name> then <other>, then exit 1 before any
 # pipeline step.
 set -eu

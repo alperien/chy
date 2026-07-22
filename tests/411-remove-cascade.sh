@@ -1,10 +1,10 @@
 #!/bin/sh
 # remove -r: cascade over db-recorded depends. Unrequested
-# packages in the named packages' closure go; `requested`-marked members
-# survive; members kept alive only by each other (mutual orphans) go; an
-# installed outsider requiring a NAMED package refuses the whole run;
-# removal order is the exact reverse of deterministic order; packages
-# outside the set are untouched.
+# packages in the named packages' closure go, `requested`-marked members
+# survive, and members kept alive only by each other (mutual orphans)
+# still go. An installed outsider requiring a NAMED package refuses the
+# whole run. Removal order is the exact reverse of deterministic
+# order. Packages outside the set are untouched.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

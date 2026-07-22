@@ -2,7 +2,7 @@
 # install step 11: after linking, every store-entry
 # regular file with the ELF magic is checked with ldd under the launcher
 # LD_LIBRARY_PATH convention; an unresolvable NEEDED soname produces
-# exactly `chy: <name>: warning: needs <soname>` on stderr - one line per
+# exactly `chy: <name>: warning: needs <soname>` on stderr, one line per
 # distinct missing soname, sorted, ` (package: <pkg>)` appended when
 # $CHY_ROOT/shlibs.map (significant-line rule, first two tokens, first
 # match wins) knows the soname. Warnings never affect exit status and
@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.." || exit 2
 
 t_init
 
-# elf_install_pkg NAME ELF... - recipe whose build stages each pre-built
+# elf_install_pkg NAME ELF...: recipe whose build stages each pre-built
 # ELF fixture as usr/bin/<basename>, plus one text file.
 elf_install_pkg() {
     eip_name=$1

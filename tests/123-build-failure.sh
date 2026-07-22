@@ -1,6 +1,6 @@
 #!/bin/sh
-# /a build exiting nonzero aborts the install and the root is
-# left exactly as it was - even when the build had already staged files.
+# a build exiting nonzero aborts the install and leaves the root as it
+# was, even when the build already staged files.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

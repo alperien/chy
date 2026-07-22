@@ -1,4 +1,4 @@
-"""repodata.py - dependency parsing and closure logic over Void repodata.
+"""Dependency parsing and closure logic over Void repodata.
 
 Pure functions over the snapshot's repodata slice: a dict mapping binary
 package name -> its repodata index entry (the plist dicts Void publishes).
@@ -24,11 +24,10 @@ _PIN_RE = re.compile(r"^(.+)-([A-Za-z0-9._+]+)_([0-9]+)$")
 def parse_dep(token):
     """Parse one dependency token -> (name, kind).
 
-    kind is one of 'ge', 'lt', 'pin', 'plain', 'virtual' (
-    operator forms first, then the exact pin, then a bare name).
-    A dual-bound token like 'python3>=3.14.0_1<3.15.0_1' is 'ge' - the
-    name still splits off correctly, and constraints are stripped anyway
-.
+    kind is one of 'ge', 'lt', 'pin', 'plain', 'virtual' (operator
+    forms first, then the exact pin, then a bare name).  A dual-bound
+    token like 'python3>=3.14.0_1<3.15.0_1' is 'ge'; the name still
+    splits off right, and constraints get stripped anyway.
     """
     if token.startswith("virtual?"):
         name, _kind = parse_dep(token[len("virtual?"):])
@@ -44,10 +43,10 @@ def parse_dep(token):
 
 
 # Void-internal source-only names that never ship a binary: a small,
-# reviewed name-map.  Today exactly one entry - Void's
-# glib<->gobject-introspection bootstrap package is, for chy's merged
-# world, the published gobject-introspection.  Growing this table is a
-# golden-diff review, like the idiom set.
+# reviewed name-map.  One entry today: Void's glib<->gobject-introspection
+# bootstrap package, which in chy's merged world is just the published
+# gobject-introspection.  Growing this table is a golden-diff review,
+# like the idiom set.
 _NAME_MAP = {
     "gobject-introspection-bootstrap": "gobject-introspection",
 }
@@ -116,8 +115,8 @@ def run_closure(names, slice):
         src = flatten(binary, slice)
         if src is not None:
             flattened.add(src)
-        # A slice miss stays silent here by design; see
-        # binary_run_closure's docstring for who refuses.
+        # A slice miss stays silent here; binary_run_closure's
+        # docstring says who refuses.
     return flattened
 
 

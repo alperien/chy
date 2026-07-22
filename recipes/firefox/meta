@@ -3,11 +3,11 @@ kind: binary
 date: 2026-05-28
 pkgver: firefox-153.0.1_1
 source: https://archive.mozilla.org/pub/firefox/releases/153.0.1/
-digest-provenance: Mozilla's published SHA256SUMS, verified at authoring
-depends-derivation: DT_NEEDED parsed from every ELF in the tarball (no
-depends-derivation: execution), minus bundled sonames, minus the libc
-depends-derivation: family, mapped via shlibs.map; libasound -> alsa-lib
-depends-derivation: added manually (outside the gtk+3 closure)
+# checksum is Mozilla's own SHA256SUMS entry.
+# depends came from readelf'ing every NEEDED soname in the tarball,
+# dropping the ones firefox bundles and the libc, and mapping the rest
+# through shlibs.map. libasound isn't in the gtk3 closure so it's added
+# here by hand.
 expect-needed: ld-linux-x86-64.so.2
 expect-needed: libX11-xcb.so.1
 expect-needed: libX11.so.6

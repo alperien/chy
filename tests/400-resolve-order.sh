@@ -1,9 +1,9 @@
 #!/bin/sh
-# /the needed set is ordered as the unique smallest valid
-# sequence over the union of depends and makedepends edges - repeatedly
-# emit the smallest name whose kept dependencies have all been emitted.
-# Argument order is irrelevant; the order line is printed to stdout before
-# any pipeline step and the builds run in exactly that sequence.
+# the needed set is ordered as the unique smallest valid sequence over
+# the union of depends and makedepends edges (keep emitting the
+# smallest name whose kept deps are all out). Argument order doesn't
+# matter. The order line prints to stdout before any pipeline step and
+# the builds run in exactly that sequence.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

@@ -1,9 +1,9 @@
 #!/bin/sh
-# list: no names - every installed package as
-# "<name> <version> <revision>", sorted by name, exit 0, empty output for
-# an empty root. With names - all processed in the order given; missing
-# names put "chy: <name>: error: not installed" on stderr and force exit 1
-# without suppressing the installed ones.
+# list. No names: every installed package as
+# "<name> <version> <revision>", sorted by name, exit 0, empty output
+# for an empty root. With names: processed in the order given, a
+# missing name puts "chy: <name>: error: not installed" on stderr and
+# forces exit 1, the installed ones still print.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

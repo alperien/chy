@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# translator/evaluate.sh - the two-pass Void template evaluator.
+# translator/evaluate.sh: the two-pass Void template evaluator.
 #
 # Sources a srcpkgs-style template in an isolated, stubbed xbps-src
 # environment and writes the fixed dump directory the Python side
 # (chytrans/emit) consumes.
 #
 # Started life as a quick feasibility spike, then hardened:
-#   * two passes with xbps-src semantics - pass 1 in a discarded subshell
+#   * two passes with xbps-src semantics: pass 1 in a discarded subshell
 #     harvests build_options/build_options_default; pass 2 re-sources in a
 #     FRESH subshell with build_option_<x>=1 per default (never re-source in
 #     one shell: string += assignments would double-append);
 #   * command_not_found_handle makes any unexpected command at source time a
 #     hard failure, named on stderr;
-#   * no process substitution anywhere (/dev/fd may be absent - spike hit
+#   * no process substitution anywhere (/dev/fd may be absent; the spike hit
 #     this); temp files and pure-bash set diffs instead.
 #
 # Usage: bash translator/evaluate.sh <srcpkg-dir> <dump-out-dir>
 #
-#   <srcpkg-dir>     contains `template` (+ patches/, files/ - not read here)
+#   <srcpkg-dir>     contains `template` (+ patches/, files/, not read here)
 #   <dump-out-dir>   parent directory; on success <dump-out-dir>/<pkgname>/
 #                    is (re)created with:
 #                      vars        one "key<TAB>value" per line, value escapes
@@ -32,7 +32,7 @@
 # Function body extraction, pinned for determinism: the body is the output of
 # `declare -f <name>` (bash's canonical re-formatting: 4-space indent, `;`
 # separators) minus line 1 (`<name> () `), line 2 (`{ `), and the final line
-# (`}`) - i.e. exactly the text between the braces, one trailing newline.
+# (`}`), i.e. exactly the text between the braces, one trailing newline.
 #
 # env_vars capture: setup_xbps_env unsets CFLAGS/CXXFLAGS/CPPFLAGS/LDFLAGS
 # before pass 2, so any of the four that's set after sourcing is a
@@ -52,7 +52,7 @@ die() {
     exit 1
 }
 
-# ------------------------------------------------------------- arguments --
+# arguments
 [ "$#" -eq 2 ] || die "usage: bash translator/evaluate.sh <srcpkg-dir> <dump-out-dir>"
 
 SRCDIR=$(cd -- "$1" 2>/dev/null && pwd) || die "$1: not a readable directory"
@@ -64,7 +64,7 @@ fi
 mkdir -p -- "$2" || die "$2: cannot create dump-out-dir"
 OUTPARENT=$(cd -- "$2" 2>/dev/null && pwd) || die "$2: cannot resolve dump-out-dir"
 
-# ------------------------------------------------------------- workspace --
+# workspace
 WORKDIR=$(mktemp -d) || die "mktemp failed"
 trap 'rm -rf "$WORKDIR"' EXIT
 
@@ -74,7 +74,7 @@ SANDBOX1="$WORKDIR/sandbox1"    # empty cwd for pass 1
 SANDBOX2="$WORKDIR/sandbox2"    # empty cwd for pass 2
 mkdir "$STAGE" "$SANDBOX1" "$SANDBOX2" || die "cannot set up workspace"
 
-# --------------------------------------------------------------- stub env --
+# stub env
 # Emulates a native x86_64/glibc build, mirroring xbps-src's setup enough for
 # source-time evaluation. Also scrubs every variable the dump reads (and the
 # templates append to) so nothing leaks in from the caller's environment.
@@ -167,7 +167,7 @@ command_not_found_handle() {
     return 127
 }
 
-# Fail loudly if the template called anything we did not stub.
+# Hard failure if the template called anything we didn't stub.
 check_unexpected_commands() {
     local _first
     if [ -s "$CNF_LOG" ]; then
@@ -191,7 +191,7 @@ _esc() { # $1 = raw value; result in $_esc_out
     _esc_out=${_esc_out//$'\n'/\\n}
 }
 
-# ------------------------------------------------------------------ pass 1 --
+# pass 1
 # Discarded subshell: source with NO build_option_* set, only to harvest the
 # declared options and their defaults (templates declare build_options *after*
 # configure_args already used $(vopt_*), so pass-1 vopt output is wrong by
@@ -232,7 +232,7 @@ for _opt in $DECLARED_OPTIONS $DEFAULT_OPTIONS; do
     esac
 done
 
-# ------------------------------------------------------------------ pass 2 --
+# pass 2
 # Fresh subshell, defaults enabled, full dump staged to $STAGE/<pkgname>.
 : >"$CNF_LOG"
 (
@@ -271,7 +271,7 @@ done
     _pkgdump="$STAGE/$pkgname"
     mkdir -p "$_pkgdump/functions" || exit 91
 
-    # ---- vars: the 19 pinned keys, always present, order ----------------
+    # vars: the 19 pinned keys, always present, order
     {
         for _key in pkgname version revision build_style build_helper \
             distfiles checksum hostmakedepends makedepends depends \
@@ -293,7 +293,7 @@ done
         printf '%s\t%s\n' env_vars "$_esc_out"
     } >"$_pkgdump/vars" || exit 91
 
-    # ---- options: resolved values for the declared set, declared order -----
+    # options: resolved values for the declared set, declared order
     {
         for _opt in $DECLARED_OPTIONS; do
             _bo="build_option_${_opt//-/_}"
@@ -305,7 +305,7 @@ done
         done
     } >"$_pkgdump/options" || exit 91
 
-    # ---- functions: new do_*/pre_*/post_*/*_package, bodies verbatim -------
+    # functions: new do_*/pre_*/post_*/*_package, bodies verbatim
     while IFS= read -r _line; do
         [ -n "$_line" ] || continue
         _fn=${_line#declare -f }
@@ -349,7 +349,7 @@ case $rc in
     *) die "$TEMPLATE: evaluation failed with status $rc (pass 2)" ;;
 esac
 
-# ------------------------------------------------------- install the dump --
+# install the dump
 IFS= read -r PKGNAME <"$WORKDIR/pkgname" || die "internal: pkgname not recorded"
 case "$PKGNAME" in
     ''|.|..|-*|*/*|*[!A-Za-z0-9._+-]*) die "internal: unsafe pkgname escaped pass 2" ;;

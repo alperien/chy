@@ -1,5 +1,5 @@
 #!/bin/sh
-# Smoke: the scaffold holds. chy runs, reports its version, rejects nonsense.
+# Smoke: chy runs, reports its version, rejects nonsense.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 

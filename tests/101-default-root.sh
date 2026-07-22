@@ -1,6 +1,6 @@
 #!/bin/sh
-# unset or empty $CHY_ROOT means $HOME/.chy; no other location is
-# ever consulted; two roots at different paths are fully independent.
+# unset or empty $CHY_ROOT means $HOME/.chy, nothing else gets
+# consulted. Roots at different paths don't see each other.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

@@ -1,12 +1,10 @@
 #!/bin/sh
 # 510: the chytrans black-box suite.
 #
-# Thin harness entry: the real work lives in translator/tests/run, a
-# python3-stdlib runner over committed synthetic snapshot fixtures. Skips
-# loudly while the prerequisites are missing - python3 arrives via the
-# container prepare step, translator/chytrans via the build
-# waves - and never weakens: once the translator exists, every fixture
-# must pass.
+# Thin entry, the real work is translator/tests/run, a python3-stdlib
+# runner over the committed snapshot fixtures. Skips loudly while
+# python3 or the translator is missing (python3 comes in at container
+# prepare). Once the translator exists every fixture has to pass.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 
@@ -15,7 +13,7 @@ command -v python3 >/dev/null 2>&1 || { echo "SKIP: python3 unavailable"; exit 0
 
 python3 translator/tests/run || exit 1
 
-# --- the corpus golden: live-snapshotted twenty ------
+# --- the corpus golden: live-snapshotted twenty ---
 g=translator/tests/golden
 if [ -d "$g/snapshot" ]; then
     tmp=$(mktemp -d) || exit 1

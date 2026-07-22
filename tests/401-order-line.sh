@@ -1,6 +1,6 @@
 #!/bin/sh
-# the order line `chy: order: <names>` prints always - even for
-# a single package - before any pipeline step. When the needed set is
+# the order line `chy: order: <names>` always prints (even for
+# a single package) before any pipeline step. When the needed set is
 # empty (everything requested is provided) no order line prints and
 # install exits 0. Under --no-deps the line carries the remaining names in
 # first-occurrence order, duplicates collapsed.

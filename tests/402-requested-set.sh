@@ -1,9 +1,9 @@
 #!/bin/sh
-# duplicate command-line names collapse (first occurrence wins);
-# a requested name listed in db/provided is skipped with the pinned
-# warning, builds nothing, and the run exits 0; every other requested name
-# is never treated as satisfied - an installed name given on the command
-# line is rebuilt while its installed dependencies are not.
+# duplicate command-line names collapse (first occurrence wins). A
+# requested name listed in db/provided is skipped with the pinned
+# warning, builds nothing, run exits 0. No other requested name is ever
+# treated as satisfied: an installed name given on the command line
+# rebuilds, its installed deps don't.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

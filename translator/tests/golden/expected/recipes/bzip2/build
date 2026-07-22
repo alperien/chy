@@ -1,8 +1,8 @@
 #!/bin/sh -e
-# bzip2 has no configure and no usable install target; this mirrors
-# Void's do_build/do_install by hand. The soname patch (auto-applied
-# from patches/) changes libbz2's soname to libbz2.so.1 to match the
-# ABI every Void-built consumer (freetype, ...) expects.
+# bzip2 ships no configure and no install target worth using, so this
+# does the build and install by hand, following Void's recipe. The
+# soname patch in patches/ sets libbz2's soname to libbz2.so.1, which
+# is what the Void-built consumers (freetype and friends) link against.
 
 make CFLAGS="-O2 -fPIC $CPPFLAGS $LDFLAGS" LDFLAGS="$LDFLAGS" -f Makefile-libbz2_so
 make CFLAGS="-O2 $CPPFLAGS" LDFLAGS="$LDFLAGS" bzip2recover libbz2.a

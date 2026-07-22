@@ -1,10 +1,10 @@
 #!/bin/sh
-# remove: the reverse-dependency guard. Removing a package that
-# any other installed package's DB-RECORDED depends names fails with
+# remove: the reverse-dependency guard. Removing a package that any
+# other installed package's DB-RECORDED depends names fails with
 # `chy: <name>: error: required by: <dependents, sorted, space-separated>`
-# and stops. The guard reads the db, not recipes; makedepends never guard;
-# a reinstall of a depended-on package is never guarded; the check happens
-# at the moment each name is processed.
+# and stops. The guard reads the db, not recipes, and makedepends never
+# guard. Reinstalling a depended-on package isn't guarded. The check
+# runs at the moment each name is processed.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

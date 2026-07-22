@@ -1,9 +1,9 @@
-"""snapshot.py - build (network) and load (offline) the snapshot.
+"""Build (network) and load (offline) the snapshot.
 
 create() is the only networked code in the translator: it fetches Void's
 x86_64-repodata, common/shlibs at the current master commit, and each
 requested package's srcpkgs/<name>/ tree at its pinned source-revisions
-commit (shallow, sparse, blob-filtered git fetch - docs/).
+commit (shallow, sparse, blob-filtered git fetch; docs/).
 load() is offline and is all the translate pipeline ever touches.
 
 Python 3.9+, stdlib only; external tools: curl, zstd, tar, git, bash.
@@ -26,13 +26,13 @@ RAW_URL = "https://raw.githubusercontent.com/void-linux/void-packages"
 COMMITS_API = "https://api.github.com/repos/void-linux/void-packages/commits/"
 
 # tool-injection mirror.  Void injects these outside templates, so
-# no evaluation can surface them; the slice must contain them (and their
-# run-closures) or translation would refuse on a flatten miss.  This is
-# deliberately generous - injects pkg-config into gnu-configure /
-# configure / gnu-makefile builds only "when configure_args or hooks
-# reference it", but a slice SUPERSET is always safe (requires cover,
-# not equality) while an undershoot refuses; chytrans keeps
-# provided.suggested exact by intersecting with emit's Result lists.
+# no evaluation can surface them; the slice has to contain them (and their
+# run-closures) or translation refuses on a flatten miss.  This table
+# errs generous: emit adds pkg-config to gnu-configure / configure /
+# gnu-makefile builds only when configure_args or hooks reference it,
+# but a slice SUPERSET is always safe while an undershoot refuses;
+# chytrans keeps provided.suggested exact by intersecting with emit's
+# Result lists.
 STYLE_TOOLS = {
     "meson": ("meson", "ninja", "pkg-config"),
     "cmake": ("cmake", "ninja"),
@@ -85,7 +85,7 @@ def load(dir):
     return Snapshot(dir, slice, shlibs, manifest)
 
 
-# ---------------------------------------------------------------- dumps
+# dumps
 
 _UNESCAPE = {"t": "\t", "n": "\n", "\\": "\\"}
 
@@ -158,7 +158,7 @@ def injected_tools(dump_root, name):
     return tools
 
 
-# --------------------------------------------------------------- create
+# create
 
 def _run(cmd, **kwargs):
     return subprocess.run(cmd, stdout=subprocess.PIPE,
@@ -261,11 +261,11 @@ def _harvest_makedepends(names, outdir, tmp):
     """Run evaluate.sh (offline-safe bash) over each fetched srcpkg tree
     to learn the evaluated hostmakedepends/makedepends plus the
     injected tools, so the slice covers everything translation can
-    produce.  Snapshot creation cannot otherwise know them: they
+    produce.  Snapshot creation can't know them any other way: they
     live in templates, not repodata.  When evaluate.sh is absent
     (older dumps were laid out flat) we degrade to the run_depends
-    closure alone and warn loudly - a snapshot built that way will
-    refuse packages whose makedepends miss the slice."""
+    closure alone and warn; a snapshot built that way will refuse
+    packages whose makedepends miss the slice."""
     eval_sh = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "evaluate.sh")
     if not os.path.isfile(eval_sh):
@@ -320,7 +320,7 @@ def _create(names, outdir, tmp):
         if src is None:
             problems.append("%s: not in repodata" % name)
         elif src != name:
-            problems.append("%s: is a subpackage of %s - request the source"
+            problems.append("%s: is a subpackage of %s; request the source"
                             " package" % (name, src))
     if problems:
         raise SnapshotError("; ".join(problems))
@@ -357,11 +357,11 @@ def _create(names, outdir, tmp):
     with open(os.path.join(outdir, "common-shlibs"), "wb") as f:
         f.write(shlibs_bytes)
 
-    # MANIFEST: one line per fetched object - "url commit sha256".  The
+    # MANIFEST: one line per fetched object, "url commit sha256".  The
     # digests are of the files as they sit in the snapshot, so an
     # offline audit can re-hash the tree; the repodata line records the
     # upstream URL but digests the derived slice (the retained
-    # artifact), with '-' for the commit it does not have.
+    # artifact), with '-' for the commit it doesn't have.
     manifest = ["%s - %s" % (REPODATA_URL, _file_sha256(slice_path)),
                 "%s %s %s" % (shlibs_url, master_sha, _sha256(shlibs_bytes))]
     for name in names:

@@ -1,9 +1,9 @@
 #!/bin/sh
 # install: the needed set runs in the deterministic order
-# (argument order does not matter), first failure aborts the run but
-# completed installs stay; stdout is the order line plus "chy: <name>:"
+# (argument order does not matter). First failure aborts the run but
+# completed installs stay. stdout is the order line plus "chy: <name>:"
 # progress and the exact completion line. Reinstalls follow the full
-# pipeline: a failed rebuild never costs the working install; a successful
+# pipeline: a failed rebuild never costs the working install, a successful
 # one replaces store entry, alias, farm links and db entry.
 set -eu
 cd "$(dirname "$0")/.." || exit 2

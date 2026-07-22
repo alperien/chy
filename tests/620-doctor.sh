@@ -1,5 +1,5 @@
 #!/bin/sh
-# doctor: the truth report over installed packages.
+# doctor: audit every installed package.
 # Findings go to stdout, paths $CHY_ROOT-relative; then exactly
 # `chy: doctor: clean` (exit 0) or `chy: doctor: <n> problem(s)` (exit 1),
 # n being the number of finding lines. Read-only: creates no directories,

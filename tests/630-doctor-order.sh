@@ -1,13 +1,12 @@
 #!/bin/sh
-# doctor, ordering: packages report in name order (byte order,
-# per the global collation rule); within a package the three checks emit
-# in order - needs findings (check 1) before the manifest walks - and
-# checks 2 and 3 walk the manifest in its stored byte-sorted order, at
-# most one finding per path. Fixture note: the lone broken-link path here
-# byte-sorts before every missing/foreign path, so the expected block is
-# the same whether an implementation finishes check 2 before check 3 or
-# walks the manifest once; the missing/foreign/missing run pins check 3
-# to manifest order, never grouped by finding type.
+# doctor ordering: packages report in name order (byte order, the
+# global collation rule). Within a package checks emit in order, needs
+# (check 1) first, then checks 2 and 3 walking the manifest in its
+# stored byte-sorted order, at most one finding per path. Fixture note:
+# the lone broken-link path byte-sorts before every missing/foreign
+# path, so the expected block is the same whether check 2 finishes
+# before check 3 or one walk does both. The missing/foreign/missing run
+# pins check 3 to manifest order, not grouped by finding type.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -34,7 +33,7 @@ if [ "$have_elf" = 1 ]; then
             "$TMPD/ord-elf"
     } >>"$CHY_ROOT/recipes/amess/build"
 fi
-# mmid: installed, clean, and silent - sits between the two by name
+# mmid: installed, clean, and silent; sits between the two by name
 mkpkg "$CHY_ROOT" mmid 1.0 usr/bin/mm-tool
 # zmess: one problem, reported after everything amess has to say
 mkpkg "$CHY_ROOT" zmess 1.0 usr/bin/zz-gone

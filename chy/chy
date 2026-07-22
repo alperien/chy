@@ -1,24 +1,22 @@
 #!/bin/sh
 # chy. A tiny package manager for hand-built Linux systems.
 #
-# One file. POSIX sh. Readable in one sitting. The state is the filesystem.
-# $CHY_ROOT defines the world; nothing else knows where things live.
+# One POSIX sh file. All state is on the filesystem under $CHY_ROOT.
 #
-# the truth after install. install walks depends+makedepends,
-# checks conflicts, and builds in the unique smallest valid order; after
-# linking, runtime verification runs ldd over the new ELFs and warns
-# about unresolved libraries; doctor re-runs that scan over every
-# installed package and audits manifests for broken, missing, or foreign
-# farm links. Sources are fetched and verified, built into
-# store/<name>-<version>/, linked into the usr/ symlink farm, and
-# recorded under db/installed/.
+# install walks depends+makedepends, checks conflicts, and builds in the
+# unique smallest valid order. Sources are fetched and verified, built
+# into store/<name>-<version>/, linked into the usr/ symlink farm, and
+# recorded under db/installed/. After linking, runtime verification runs
+# ldd over the new ELFs and warns about unresolved libraries. doctor
+# re-runs that scan over every installed package and audits manifests
+# for broken, missing, or foreign farm links.
 
 CHY_VERSION=0.3.0
 set -u
 
-# --------------------------------------------------------------- output --
-# Every line chy itself prints follows one grammar: progress and
-# completion on stdout, warnings and errors on stderr, all "chy: <name>:".
+# output
+# grammar: progress and completion on stdout, warnings and
+# errors on stderr, everything prefixed "chy: <name>:".
 
 say() { printf 'chy: %s: %s\n' "$1" "$2"; }
 warn() { printf 'chy: %s: warning: %s\n' "$1" "$2" >&2; }
@@ -43,10 +41,11 @@ usage:
 EOF
 }
 
-# ----------------------------------------------------------- validation --
-# Package names match [A-Za-z0-9][A-Za-z0-9+._-]*; versions and revisions match
-# [A-Za-z0-9._+]+ (no hyphen, so store/<name>-<version> parses cleanly).
-# "install" and "order" are reserved: reserved output scopes.
+# validation
+# Package names match [A-Za-z0-9][A-Za-z0-9+._-]*. Versions and revisions
+# match [A-Za-z0-9._+]+ (no hyphen, so store/<name>-<version> parses
+# cleanly). "install" and "order" are reserved since they appear as
+# output scopes.
 
 valid_name() {
     case $1 in ''|[!A-Za-z0-9]*|install|order) return 1 ;; esac
@@ -62,8 +61,8 @@ valid_sha256() {
     case $1 in *[!0-9a-f]*) return 1 ;; *) return 0 ;; esac
 }
 
-# The root must be absolute, with no whitespace and no . or .. components;
-# trailing slashes are stripped. Anything else is refused at startup.
+# The root has to be absolute, no whitespace, no . or .. components.
+# Trailing slashes get stripped, anything else is refused at startup.
 bad_root() {
     printf 'chy: invalid CHY_ROOT %s: %s\n' "${CHY_ROOT:-(empty)}" "$1" >&2
     exit 2
@@ -77,13 +76,13 @@ check_root() {
     case $CHY_ROOT/ in */./*|*/../*) bad_root 'has . or .. components' ;; esac
 }
 
-# A tool is checked at the moment it is needed.
+# tools get checked the first time they're needed
 require() { # require <name> <tool>
     command -v "$2" >/dev/null 2>&1 || fail "$1" "missing tool: $2"
 }
 
-# The significant lines of a list-valued recipe file: blank lines and
-# lines starting with '#' are ignored.
+# Significant lines of a list-valued recipe file: skip blanks and '#'
+# comments.
 sig_lines() {
     while IFS= read -r sl_line || [ -n "$sl_line" ]; do
         case $sl_line in ''|'#'*) continue ;; esac
@@ -105,13 +104,14 @@ sha_of() { # print the sha256 digest of a file
 }
 
 # Name sets are strings like " a b c ". Names never contain whitespace,
-# so membership is a case match and the resolver needs no arrays.
+# so a case match does membership and the resolver needs no arrays.
 in_set() { # in_set <name> <set>
     case $2 in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
-# Walking a set: `REST=$set; while pop; do ... $POP ... done`. pop consumes
-# the first name of $REST into $POP; false when done. Never nest walks.
+# Walking a set: `REST=$set; while pop; do ... $POP ... done`. pop takes
+# the first name of $REST into $POP, returns false when empty. Don't
+# nest walks.
 pop() {
     REST=${REST# }
     [ -n "$REST" ] || return 1
@@ -121,8 +121,8 @@ pop() {
     esac
 }
 
-# The names in a list-valued file: the first field of every significant
-# line. A missing file is an empty list.
+# First field of every significant line. A missing file is an empty
+# list.
 list_names() { # list_names <file>
     [ -f "$1" ] || return 0
     sig_lines "$1" | while IFS= read -r ln_l; do first_field "$ln_l"; done
@@ -132,9 +132,9 @@ provided_names() { # db/provided names: sorted, de-duplicated
     list_names "$CHY_ROOT/db/provided" | LC_ALL=C sort -u
 }
 
-# -------------------------------------------------------------- recipes --
-# Validate recipes/<name>/ completely and set R_DIR, R_VER, R_REV. Any
-# invalidity fails the install before any fetching begins.
+# recipes
+# Validate recipes/<name>/ and set R_DIR, R_VER, R_REV. Any invalidity
+# fails the install before any fetching begins.
 recipe_check() { # recipe_check <name>
     R_DIR=$CHY_ROOT/recipes/$1
     [ -d "$R_DIR" ] || fail "$1" "unknown package: no recipe at recipes/$1"
@@ -142,7 +142,7 @@ recipe_check() { # recipe_check <name>
         [ -f "$R_DIR/$rc_f" ] || fail "$1" "recipe missing required file: $rc_f"
     done
 
-    # kind: absent means source; binary is a provenance marker - the
+    # kind: absent means source. binary is just a provenance marker, the
     # pipeline is identical (the launcher convention binds the recipe,
     # not chy). Anything else is an error naming the kind.
     if [ -f "$R_DIR/kind" ]; then
@@ -186,7 +186,7 @@ recipe_check() { # recipe_check <name>
     [ -z "$rc_dup" ] || fail "$1" "duplicate source filename: $rc_dup"
 }
 
-# ---------------------------------------------------------------- fetch --
+# fetch
 fetch_url() { # fetch_url <name> <url> <outfile>
     if command -v curl >/dev/null 2>&1; then
         curl -fL -o "$3" -- "$2"
@@ -197,9 +197,9 @@ fetch_url() { # fetch_url <name> <url> <outfile>
     fi
 }
 
-# One source line: a verified cache hit is used as-is; otherwise the
-# line's URLs are walked in order - download, verify, on mismatch delete
-# and advance - so a corrupt primary degrades to the mirror.
+# One source line. A verified cache hit is simply reused; otherwise try the
+# line's URLs in order (download, verify, on mismatch delete and move
+# on), so a corrupt primary falls back to the mirror.
 fetch_source() { # fetch_source <name> <sha256> <source line>
     fs_file=$(first_field "$3")
     fs_file=${fs_file##*/}
@@ -231,7 +231,7 @@ fetch_source() { # fetch_source <name> <sha256> <source line>
     fail "$1" "checksum mismatch for $fs_file: expected $2, got $fs_got"
 }
 
-# Every source is fetched and verified before the build dir is prepared.
+# fetch and verify every source before the build dir is prepared
 fetch_all() { # fetch_all <name>
     mkdir -p "$CHY_ROOT/build"
     sig_lines "$R_DIR/sources"   >"$CHY_ROOT/build/srcs"
@@ -241,7 +241,7 @@ fetch_all() { # fetch_all <name>
     done 3<"$CHY_ROOT/build/srcs" 4<"$CHY_ROOT/build/sums"
 }
 
-# ------------------------------------------------------------ build dir --
+# build dir
 is_archive() {
     case $1 in *.tar.gz|*.tgz|*.tar.xz|*.tar.bz2) return 0 ;; *) return 1 ;; esac
 }
@@ -258,8 +258,8 @@ stage_source() { # stage_source <name> <filename> <dir>
     fi
 }
 
-# If extracting the first source yielded exactly one top-level entry -
-# dotfiles included - and it is a directory, hoist its contents up one
+# If extracting the first source yielded exactly one top-level entry
+# (dotfiles count) and it is a directory, hoist its contents up one
 # level so ./configure works from the top.
 hoist() { # hoist <dir>
     h_count=0 h_only=
@@ -311,7 +311,7 @@ prepare_build() { # prepare_build <name>
     done <"$CHY_ROOT/build/patchlist"
 }
 
-# ---------------------------------------------------------------- build --
+# build
 # sh recipes/<name>/build <destdir> <version>, cwd the prepared build
 # dir, with the environment. A nonzero exit aborts the install.
 run_build() { # run_build <name>
@@ -328,7 +328,7 @@ run_build() { # run_build <name>
     ) || fail "$1" "build failed"
 }
 
-# ------------------------------------------------------------ normalize --
+# normalize
 # The build staged a DESTDIR image of the real prefix at $DEST$CHY_ROOT.
 # Check it and normalize it, still in scratch, to a $CHY_ROOT-relative
 # tree at $NORM. On failure the root is untouched.
@@ -364,7 +364,7 @@ normalize() { # normalize <name>
     mv "$DEST$CHY_ROOT" "$NORM" || fail "$1" "cannot normalize the staged tree"
 }
 
-# -------------------------------------------------------------- linking --
+# linking
 # A farm symlink is owned by <name> iff the path component of its target
 # right after store/ is exactly <name>.
 owner_of() { # owner_of <link>: print the owning component, if any
@@ -387,9 +387,9 @@ updots() { # print ../ once per directory level of a relative path
 }
 
 # Conflicts are found from the normalized tree before the store or farm
-# is touched: the whole install links or none of it does. A needed file
-# path may only be free or our own symlink; a needed directory path may
-# only be free or a real directory.
+# is touched, so the install links completely or not at all. A needed
+# file path must be free or already our own symlink; a needed directory
+# path must be free or a real directory.
 conflict_scan() { # conflict_scan <name>
     LIST=$CHY_ROOT/build/files
     (cd "$NORM" && find . \( -type f -o -type l \) -print) |
@@ -433,9 +433,9 @@ conflict_scan() { # conflict_scan <name>
     [ "$cs_bad" -eq 0 ] || fail "$1" "conflicts found; nothing was linked"
 }
 
-# store/<name>-<version> must be free or a replaceable real directory and
-# store/<name> free or a symlink - anything else is a name/version
-# collision, and chy fails rather than guessing.
+# store/<name>-<version> has to be free or a replaceable real directory,
+# store/<name> free or a symlink. Anything else is a name/version
+# clash, so chy stops instead of guessing.
 shape_check() { # shape_check <name>
     sc_e=$CHY_ROOT/store/$1-$R_VER
     if [ -L "$sc_e" ] || { [ -e "$sc_e" ] && [ ! -d "$sc_e" ]; }; then
@@ -460,8 +460,9 @@ link_farm() { # link_farm <name>
 }
 
 # The db entry is written last; its presence means "installed".
-# depends/conflicts are verbatim recipe copies; the empty requested marker
-# means "named on the command line" - dependency installs never carry it.
+# depends/conflicts are verbatim recipe copies. The empty requested
+# marker means "named on the command line"; dependency installs never
+# carry it.
 write_db() { # write_db <name> <requested: 1|0>
     wd_db=$CHY_ROOT/db/installed/$1
     rm -rf "$wd_db"
@@ -473,15 +474,15 @@ write_db() { # write_db <name> <requested: 1|0>
     [ "$2" -ne 1 ] || : >"$wd_db/requested"
 }
 
-# ------------------------------------------------- runtime verification --
-# The pinned ELF scan: every
-# lstat-regular file under $1 whose first four bytes are the ELF magic
-# is fed to ldd once, with $CHY_ROOT/usr/lib prepended to
-# LD_LIBRARY_PATH - verification sees exactly what a launched program
-# will see. A missing library is a line whose fields 2-4 are literally
-# "=> not found" (field 1 the soname); ldd's exit status and all other
-# output are ignored. Output: the distinct missing sonames, one per
-# line, byte-sorted, each with shlib_hint appended.
+# runtime verification
+# The ELF scan. Every lstat-regular
+# file under $1 whose first four bytes are the ELF magic goes through
+# ldd once, with $CHY_ROOT/usr/lib prepended to LD_LIBRARY_PATH so
+# verification sees what a launched program would. A missing library is
+# a line whose fields 2-4 are literally "=> not found" (field 1 is the
+# soname); ldd's exit status and everything else it prints are ignored.
+# Output: distinct missing sonames, one per line, byte-sorted, each with
+# shlib_hint appended.
 
 ELF_MAGIC=$(printf '\177ELF')
 
@@ -494,10 +495,10 @@ shlib_hint() { # " (package: <pkg>)" when shlibs.map knows the soname
 
 scan_needs() { # scan_needs <store entry dir>
     [ -d "$1" ] || return 0
-    # Sonames the package ships itself are satisfied at runtime via the
-    # launcher convention / a source ELF's own farm rpath ($ORIGIN for
-    # vendor trees): a library cross-referencing its siblings is not a
-    # missing dependency, so exclude every soname the entry provides.
+    # Skip sonames the package ships itself: those resolve at runtime
+    # via the launcher convention or a source ELF's own farm rpath
+    # ($ORIGIN for vendor trees), so a library cross-referencing its
+    # siblings is not a missing dependency.
     sn_own=$(find "$1" \( -type f -o -type l \) -name '*.so*' 2>/dev/null |
         while IFS= read -r sn_o; do printf '%s\n' "${sn_o##*/}"; done |
         LC_ALL=C sort -u)
@@ -514,10 +515,9 @@ scan_needs() { # scan_needs <store entry dir>
         done
 }
 
-# Step 11: after linking, before the db write. Warnings only - they
-# never affect exit and never undo the install; the files stay placed
-# and linked, and the warning is the truth about what more the runtime
-# needs.
+# Step 11: after linking, before the db write. Warnings only; they
+# never affect exit and never undo the install. The files stay placed
+# and linked.
 verify_runtime() { # verify_runtime <name>
     if ! command -v ldd >/dev/null 2>&1; then
         warn "$1" 'ldd unavailable; runtime verification skipped'
@@ -528,9 +528,9 @@ verify_runtime() { # verify_runtime <name>
     done
 }
 
-# --------------------------------------------------------------- remove --
+# remove
 # Prune directories that became empty, walking one unlinked path's parent
-# chain upward; $CHY_ROOT's top-level entries themselves are never removed.
+# chain upward. $CHY_ROOT's top-level entries themselves are never removed.
 prune_up() { # prune_up <relative path>
     pr_d=$1
     while [ "${pr_d%/*}" != "$pr_d" ]; do
@@ -566,9 +566,9 @@ unlink_links() { # unlink_links <name>
     done <"$ul_m"
 }
 
-# The installed packages whose db-recorded depends name $1 - the guard's
-# evidence (makedepends never guard). $1 itself and the exempt set do not
-# count. Output: byte-sorted, space-separated, trailing space if any.
+# Installed packages whose db-recorded depends name $1 (makedepends
+# never guard). $1 itself and the exempt set don't count. Output:
+# byte-sorted, space-separated, trailing space if any.
 requirers_of() { # requirers_of <name> <exempt-set>
     for ro_d in "$CHY_ROOT/db/installed/"*; do
         [ -f "$ro_d/depends" ] || continue
@@ -581,7 +581,7 @@ requirers_of() { # requirers_of <name> <exempt-set>
     done | LC_ALL=C sort | tr '\n' ' '
 }
 
-do_remove() { # do_remove <name> - the package must be installed
+do_remove() { # do_remove <name>; the package must be installed
     dr_db=$CHY_ROOT/db/installed/$1
     [ -f "$dr_db/version" ] || fail "$1" "db entry is corrupt: no version file"
     dr_ver='' dr_rev=''
@@ -594,9 +594,9 @@ do_remove() { # do_remove <name> - the package must be installed
     say "$1" "removed $dr_ver $dr_rev"
 }
 
-# -------------------------------------------------------------- install --
+# install
 # The pipeline, in order. Any failure up to and including the
-# conflict scan leaves the root exactly as it was: a failed rebuild never
+# conflict scan leaves the root as it was, so a failed rebuild never
 # costs the working install.
 do_install() { # do_install <name> <requested: 1|0>
     valid_name "$1" || fail "$1" "invalid package name"
@@ -607,7 +607,7 @@ do_install() { # do_install <name> <requested: 1|0>
     normalize "$1"                                 # 5
     conflict_scan "$1"                             # 6
     shape_check "$1"
-    if [ -d "$CHY_ROOT/db/installed/$1" ]; then    # 7: reinstall - the old
+    if [ -d "$CHY_ROOT/db/installed/$1" ]; then    # 7: reinstall; the old
         do_remove "$1"                             #    install goes only now
     fi
     say "$1" "link $1-$R_VER"
@@ -624,15 +624,16 @@ do_install() { # do_install <name> <requested: 1|0>
     say "$1" "installed $R_VER $R_REV"
 }
 
-# ------------------------------------------------------------- resolver --
+# resolver
 # install resolution, steps 2-5. Scratch lives in build/resolve;
 # resolution completes before any pipeline step wipes build/.
 #
-# Step 2: the needed set - walk depends+makedepends transitively from the
-# requested names. A walked dependency is satisfied (joins nothing, its
-# subtree not entered) when installed or provided; requested names never
-# are. Step 3: every needed name must have a recipe.
-resolve() { # resolve <space-separated requested names> - sets ORDER
+# Step 2 builds the needed set: walk depends+makedepends transitively
+# from the requested names. A walked dependency that is installed or
+# provided is satisfied (joins nothing, its subtree not entered).
+# Requested names never count as satisfied. Step 3: every needed name
+# must have a recipe.
+resolve() { # resolve <space-separated requested names>; sets ORDER
     RES=$CHY_ROOT/build/resolve
     rm -rf "$RES"; mkdir -p "$RES"
     : >"$RES/edges"; : >"$RES/missing"
@@ -681,9 +682,10 @@ resolve() { # resolve <space-separated requested names> - sets ORDER
 # Step 4, three checks: a needed package's recipe conflicts with an
 # installed one; an installed package's db-recorded conflicts with a
 # needed one; a needed package's recipe conflicts with another needed
-# one. Every violating pair prints one line - <name> the needed package,
-# pairs sorted by <name> then <other>, the installed wording winning when
-# both apply ("installed" < "needed" in byte order does that for free).
+# one. Every violating pair prints one line, <name> being the needed
+# package, pairs sorted by <name> then <other>. When both wordings apply
+# the installed one wins ("installed" < "needed" in byte order does that
+# for free).
 resolve_conflicts() {
     : >"$RES/pairs"
     while IFS= read -r rc_n <&3; do
@@ -719,11 +721,12 @@ resolve_conflicts() {
     exit 1
 }
 
-# Step 5: order $RES/needed over the $RES/edges kept inside the set - the
-# unique smallest valid sequence: repeatedly emit the byte-smallest name
-# whose kept dependencies have all been emitted. A stall means a cycle:
-# under install, print the cycle from its smallest member and exit 3;
-# under cascade (remove -r), drop that member's cycle edge and carry on.
+# Step 5: order $RES/needed over the $RES/edges kept inside the set.
+# Repeatedly emit the byte-smallest name whose kept dependencies have
+# all been emitted; that is the unique smallest valid sequence. A stall
+# means a cycle. Under install, print the cycle from its smallest member
+# and exit 3; under cascade (remove -r), drop that member's cycle edge
+# and carry on.
 order_awk() { # order_awk <install|cascade>
     LC_ALL=C sort -o "$RES/needed" "$RES/needed"
     LC_ALL=C awk -v mode="$1" '
@@ -748,7 +751,7 @@ order_awk() { # order_awk <install|cascade>
             for (cur = b; cur != a; cur = par[cur]) out = par[cur] " -> " out
             return out
         }
-        # The byte-smallest live neighbour of c that leads back to c -
+        # The byte-smallest live neighbour of c that leads back to c;
         # "" unless c lies on a cycle.
         function hop(c,    m, arr, k, w, best) {
             best = ""
@@ -802,15 +805,15 @@ order_awk() { # order_awk <install|cascade>
     ' "$RES/needed" "$RES/edges"
 }
 
-# ---------------------------------------------------------------- verbs --
+# verbs
 cmd_install() {
     ci_nodeps=0
     if [ "${1-}" = --no-deps ]; then ci_nodeps=1; shift; fi
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
 
-    # Resolution step 1: duplicates collapse (first occurrence wins); a
-    # requested name the host provides is skipped with a warning; every
-    # other requested name is never treated as satisfied.
+    # Resolution step 1: duplicates collapse (first occurrence wins). A
+    # requested name the host provides is skipped with a warning. No
+    # other requested name ever counts as satisfied.
     PROVIDED=" $(provided_names | tr '\n' ' ')"
     REQUESTED=' ' ci_seen=' ' ci_names=''
     for ci_n in "$@"; do
@@ -840,9 +843,9 @@ cmd_install() {
 }
 
 # remove -r: the removal set starts as the named packages plus
-# every unrequested installed package in their recorded-depends closure;
-# then any non-named member some installed package outside the set still
-# depends on is deleted, repeatedly, to a fixed point - so mutually-
+# every unrequested installed package in their recorded-depends closure.
+# Then any non-named member some installed package outside the set still
+# depends on gets dropped, repeatedly, to a fixed point. Mutually
 # dependent orphans that only cite each other still go. db data only.
 cascade_remove() {
     ca_named=' '
@@ -872,7 +875,7 @@ cascade_remove() {
         while pop; do
             if ! in_set "$POP" "$ca_named"; then
                 ca_by=$(requirers_of "$POP" "$ca_set")
-                [ -n "$ca_by" ] && continue # pinned from outside: deleted
+                [ -n "$ca_by" ] && continue # pinned from outside: dropped
             fi
             ca_new="$ca_new$POP "
         done
@@ -899,7 +902,7 @@ cascade_remove() {
     done
     ca_ord=$(order_awk cascade) || fail remove 'cannot order the removal set'
 
-    ca_rev='' REST=$ca_ord                   # remove in exact reverse order
+    ca_rev='' REST=$ca_ord                   # remove in reverse order
     while pop; do ca_rev="$POP${ca_rev:+ $ca_rev}"; done
     REST=$ca_rev
     while pop; do do_remove "$POP"; done
@@ -961,13 +964,13 @@ cmd_list() {
     exit "$cl_bad"
 }
 
-# --------------------------------------------------------------- doctor --
-# The truth report. Read-only: creates no directories, absent
-# ones are empty. Per installed package in name order, three checks emit
-# in order, at most one finding per manifest path: (1) the step-11 ELF
-# scan over the store entry, (2) owned farm symlinks whose target does
-# not resolve, (3) manifest drift - absent by lstat, or present but not
-# our own symlink. Checks 2 and 3 walk the manifest in stored order.
+# doctor
+# Read-only: creates no directories, absent ones are empty.
+# Per installed package in name order, three checks emit in order, at
+# most one finding per manifest path: (1) the step-11 ELF scan over the
+# store entry, (2) owned farm symlinks whose target does not resolve,
+# (3) manifest drift, i.e. absent by lstat, or present but not our own
+# symlink. Checks 2 and 3 walk the manifest in stored order.
 doctor_scan() {
     dsc_ldd=1
     if ! command -v ldd >/dev/null 2>&1; then
@@ -1023,7 +1026,7 @@ cmd_doctor() {
     exit 1
 }
 
-# ------------------------------------------------------------- dispatch --
+# dispatch
 check_root
 
 case ${1-} in

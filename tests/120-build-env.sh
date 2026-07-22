@@ -2,7 +2,7 @@
 # the build runs as `sh build <destdir> <version>` with cwd = the
 # prepared build directory, $1 an absolute staging dir, $2 the version, and
 # the documented environment exported (CHY_ROOT, CHY_PREFIX, PATH, CPPFLAGS,
-# LDFLAGS, PKG_CONFIG_PATH - appended/prepended to any existing values).
+# LDFLAGS, PKG_CONFIG_PATH, appended/prepended to any existing values).
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

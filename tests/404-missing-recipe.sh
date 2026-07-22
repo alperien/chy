@@ -1,10 +1,10 @@
 #!/bin/sh
-# every name in the needed set must have a recipe; otherwise
-# the smallest missing name is reported once as
+# every name in the needed set needs a recipe, otherwise the smallest
+# missing name is reported once as
 # `chy: <requirer>: error: needs <name>, which has no recipe and is not
-# provided` - <requirer> is `install` when the missing name was requested,
-# else the smallest needed package that requires it. Exit 1, resolution
-# fails before any pipeline step.
+# provided`. <requirer> is `install` when the missing name was
+# requested, else the smallest needed package that requires it. Exit 1,
+# resolution fails before any pipeline step.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

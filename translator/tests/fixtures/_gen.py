@@ -177,13 +177,13 @@ def handwritten(c, name, ver_line):
         c.expect("recipes/%s/%s" % (name, rel), text)
 
 
-# ---------------------------------------------------------------- ----
+# dependency cases
 
 def case_01():
     # parsing, flattening, libc drop, self drop, dup drop, constraint
-    # stripping, sorting - plus conflicts and template-depends being
+    # stripping, sorting; plus conflicts and template-depends being
     # ignored in favor of repodata run_depends ('ignoredep' is not in
-    # the slice, so consulting template depends refuses loudly).
+    # the slice, so consulting template depends would refuse).
     c = Case("01-parse-flatten")
     c.names("app")
     c.template("app", tmpl("app", lines=[
@@ -260,7 +260,7 @@ def case_03():
     c.finish()
 
 
-# ---------------------------------------------------------------- ----
+# rewrite cases
 
 def case_04():
     # gnu-configure minimal shape, byte-exact; mirror fallback and
@@ -288,7 +288,7 @@ def case_04():
 
 
 def case_05():
-    # plain configure is not gnu-configure - no --sysconfdir, only the
+    # plain configure is not gnu-configure: no --sysconfdir, only the
     # emitter's --prefix plus rewritten template args. Byte-exact.
     c = Case("05-shape-configure")
     c.names("zconf")
@@ -411,7 +411,7 @@ def case_10():
     c.finish()
 
 
-# ---------------------------------------------------------------- ----
+# hook cases
 
 def case_11():
     # build_helper gir -> gobject-introspection injected into
@@ -495,7 +495,7 @@ def case_14():
 
 def case_15():
     # class B: a vlicense-only post_install drops whole, leaves a
-    # dropped: meta line and no trace in the build script - which stays
+    # dropped: meta line and no trace in the build script, which stays
     # byte-identical to the minimal gnu-configure shape.
     c = Case("15-hook-dropped-vlicense")
     c.names("hookb")
@@ -537,7 +537,7 @@ def case_16():
 
 
 def case_17():
-    # the one enumerated compound exception - a CROSS_BUILD-guarded
+    # the one enumerated compound exception. A CROSS_BUILD-guarded
     # block is class B (wrapper included); the remaining simple command
     # still translates (partly-B function).
     c = Case("17-hook-cross-guard")
@@ -599,7 +599,7 @@ def case_18():
 
 def case_19():
     # on style NONE (zstd-shaped): do_build/do_install of make idioms
-    # ARE the build script - ${makejobs} dropped, PREFIX=/usr ->
+    # ARE the build script: ${makejobs} dropped, PREFIX=/usr ->
     # PREFIX="$CHY_PREFIX", $DESTDIR -> "$1". Whole file byte-exact.
     c = Case("19-style-none-make")
     c.names("zst")
@@ -643,12 +643,12 @@ def case_20():
     c.finish()
 
 
-# ---------------------------------------------------------------- ----
+# output cases
 
 def case_21():
     # handwritten exception: a pre-seeded recipes/hw1 with
-    # origin: handwritten short-circuits - exit 0, 'exception: hw1' in the
-    # report, directory byte-identical (pre/ == expect/), while a normal
+    # origin: handwritten short-circuits (exit 0, 'exception: hw1' in the
+    # report, directory byte-identical, pre/ == expect/), while a normal
     # requested package still translates around it.
     c = Case("21-exception-handwritten")
     c.names("hw1", "app")
@@ -708,7 +708,7 @@ def case_22():
     c.finish()
 
 
-# ---------------------------------------------------------------- ----
+# shlibs cases
 
 def case_23():
     # every shlib-provides in the slice maps to its source package
@@ -764,7 +764,7 @@ def case_24():
     c.finish()
 
 
-# --------------------------------------------------------------- ----
+# provided cases
 
 def case_25():
     # provided.suggested: union of emitted depends+makedepends plus
@@ -805,7 +805,7 @@ def case_25():
     c.finish()
 
 
-# --------------------------------------------------------------- ----
+# exit-status cases
 
 def case_26():
     # refusals are per-package and total: the good package is still
@@ -828,7 +828,7 @@ def case_26():
     c.finish()
 
 
-# ------------------------------------------------------- verification ---
+# verification
 
 DIRECTIVE_ARITY = {
     "exit": (1, 1), "stderr-refusal": (1, 2), "stderr-matches": (1, 1),

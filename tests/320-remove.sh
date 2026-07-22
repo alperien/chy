@@ -1,9 +1,9 @@
 #!/bin/sh
 # remove: names in order, a not-installed name is an error (exit 1,
-# stop there); manifest paths that are missing or replaced get a warning on
-# stderr and are left alone (exit still 0); emptied directories are pruned
-# but never $CHY_ROOT's top-level entries; alias, store entry and db entry
-# all go. pins the completion line exactly.
+# stop there). Manifest paths missing or replaced get a stderr warning
+# and are left alone (exit still 0). Emptied dirs are pruned, never
+# $CHY_ROOT's top-level entries. Alias, store entry and db entry all
+# go. Pins the completion line exactly.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

@@ -1,24 +1,10 @@
-"""emit.py - the chytrans emitter.
+"""The chytrans emitter.
 
 Turns one evaluated template dump plus the snapshot's repodata slice into
-one chy recipe directory, or a loud refusal.  This module owns:
+one chy recipe directory, or refuses the package.  Numbered sections below;
+each header notes which part of the format it handles.
 
-  section 1 - refusal machinery and the Result type (pinned interface)
-  section 2 - dump reading: the vars/options/functions directory
-  section 3 - dependency translation, via translator/repodata.py
-  section 4 - shell tokenizer: raw-word splitting + compound detection
-  section 5 - word rewriting: the variable and path maps
-  section 6 - hook classifier: classes A / B / C, the idiom set
-  section 7 - path-argument rewriting for configure_args
-  section 8 - style emitters and build-script assembly
-  section 9 - pins: data, not code
-  section 10 - sources, checksums, files/ assets, patches
-  section 11 - meta ledger
-  section 12 - per-recipe self-validation against chy
-  section 13 - translate() orchestration and write()
-
-Every sort in this file is byte order (C collation) - the global rule.
-python3 stdlib only.
+Every sort in this file is byte order (C collation).  python3 stdlib only.
 """
 
 import hashlib
@@ -34,12 +20,10 @@ except ImportError: # pragma: no cover - script-style layout
     import repodata # type: ignore
 
 
-# ---------------------------------------------------------------------------
-# section 1 - refusals and the Result type (the fixed interface)
-# ---------------------------------------------------------------------------
+# section 1: refusals and the Result type (the fixed interface)
 
 class Refuse(Exception):
-    """Per-package refusal: loud, total, nothing written."""
+    """Per-package refusal; nothing gets written for the package."""
 
 
 class Result:
@@ -50,7 +34,7 @@ class Result:
     .reason        refusal reason when not ok, else ''
     .depends       flattened, final runtime dependency names (sorted)
     .makedepends   flattened, final build dependency names (sorted)
-    .files         {recipe-relative path: bytes} - everything write() emits
+    .files         {recipe-relative path: bytes}, everything write() emits
     """
 
     def __init__(self, name):
@@ -62,11 +46,9 @@ class Result:
         self.files = {}
 
 
-# ---------------------------------------------------------------------------
-# section 2 - dump reading
-# ---------------------------------------------------------------------------
+# section 2: dump reading
 
-# Keys the evaluator always writes - empty values are legal.
+# keys the evaluator always writes. empty values are fine.
 _DUMP_KEYS = (
     'pkgname', 'version', 'revision', 'build_style', 'build_helper',
     'distfiles', 'checksum', 'hostmakedepends', 'makedepends', 'depends',
@@ -131,11 +113,9 @@ def _read_dump(dumpdir, name):
     return dump, functions
 
 
-# ---------------------------------------------------------------------------
-# section 3 - dependency translation
-# ---------------------------------------------------------------------------
+# section 3: dependency translation
 # Applies identically to run_depends, hostmakedepends+makedepends, and
-# conflicts: parse -> flatten -> drop libc/self/dupes -> strip versions -> sort.
+# conflicts: parse, flatten, drop libc/self/dupes, strip versions, sort.
 
 _LIBC = ('glibc', 'musl')
 
@@ -147,8 +127,8 @@ def _translate_deps(tokens, slice_, self_name, what):
         if kind == 'virtual':
             raise Refuse('%s: virtual? dependency %r (not resolved)'
                          % (what, tok))
-        # the libc is dropped BEFORE any slice lookup - it is
-        # deliberately absent from every slice
+        # the libc is dropped BEFORE any slice lookup; no
+        # slice carries it
         if pname in _LIBC:
             continue
         src = repodata.flatten(pname, slice_)
@@ -161,12 +141,10 @@ def _translate_deps(tokens, slice_, self_name, what):
     return sorted(out)
 
 
-# ---------------------------------------------------------------------------
-# section 4 - shell tokenizer
-# ---------------------------------------------------------------------------
+# section 4: shell tokenizer
 # Splits one logical line into raw words (original quoting preserved) and
-# reports every compound construct seen outside single quotes.  python
-# shlex is deliberately not used: it cannot flag compounds.
+# reports every compound construct seen outside single quotes.  Not shlex:
+# shlex can't flag compounds.
 
 _KEYWORDS = ('if', 'case', 'for', 'while', 'until')
 _ORPHAN_KW = ('then', 'do', 'done', 'fi', 'esac', 'else', 'elif')
@@ -278,8 +256,7 @@ def _tokenize(line):
 
 def _logical_lines(body):
     """Body -> logical lines: backslash continuations joined, blanks and
-    whole-line comments removed (a template comment carries no build
-    semantics)."""
+    whole-line comments removed."""
     out = []
     pend = ''
     for raw in body.splitlines():
@@ -298,16 +275,14 @@ def _logical_lines(body):
 
 
 def _unquote(word):
-    """Strip one pair of matching outer quotes - for reading a word's
-    semantic value (never for emission)."""
+    """Strip one pair of matching outer quotes.  For reading a word's
+    semantic value, never for emission."""
     if len(word) >= 2 and word[0] == word[-1] and word[0] in '\'"':
         return word[1:-1]
     return word
 
 
-# ---------------------------------------------------------------------------
-# section 5 - word rewriting: the variable and path maps
-# ---------------------------------------------------------------------------
+# section 5: word rewriting, the variable and path maps
 # $DESTDIR/usr/...  -> "$1$CHY_ROOT/usr/..."     (path map)
 # $DESTDIR        -> "$1"                    (make variable map)
 # $FILESDIR/<x>   -> basename(<x>), and <x> is recorded as a files/ asset
@@ -388,7 +363,7 @@ def _is_makejobs(word):
 def _check_no_bare_abs(word, where):
     """No literal /usr (or /etc, /var) survives unless it hangs off
     $CHY_ROOT / $CHY_PREFIX / the DESTDIR rewrite (the golden assertion,
-    applied at classification time for a precise reason)."""
+    applied here at classification time)."""
     for root in ('/usr', '/etc', '/var'):
         start = 0
         while True:
@@ -398,7 +373,7 @@ def _check_no_bare_abs(word, where):
             end = k + len(root)
             follower = word[end:end + 1]
             if follower and follower not in '/"\' ':
-                start = end # /users, /etcetera - not a path root
+                start = end # /users, /etcetera: not a path root
                 continue
             before = word[:k]
             if before.endswith('"'):
@@ -414,7 +389,7 @@ def _rewrite_word(word, ctx, where):
     """Apply the hook maps to one raw word; returns the emitted text.
 
     ctx.assets collects files/ references.  Raises _HookC when the word
-    cannot be honestly rewritten.
+    can't be rewritten.
     """
     m = _FILESDIR_RE.match(word)
     if m:
@@ -437,10 +412,8 @@ def _rewrite_word(word, ctx, where):
     return new
 
 
-# ---------------------------------------------------------------------------
-# section 6 - the hook classifier: classes A, B, C and the idiom set
-# ---------------------------------------------------------------------------
-# The idiom set is CLOSED; extending it requires golden-diff review.
+# section 6: the hook classifier, classes A, B, C and the idiom set
+# the idiom set is closed. adding to it means a golden-diff review.
 
 _PASSTHROUGH = ('sed', 'rm', 'ln', 'mv', 'cp', 'mkdir', 'install')
 _MODE_RE = re.compile(r'^[0-7]{3,4}$')
@@ -491,7 +464,7 @@ def _xlate_simple(words, fname, ctx):
     args = words[1:]
     where = fname
 
-    # -- B-class simple commands: dropped, documented ----------------
+    # B-class simple commands: dropped, documented
     if cmd == 'vlicense':
         ctx.dropped.add('vlicense in %s' % fname)
         return []
@@ -499,7 +472,7 @@ def _xlate_simple(words, fname, ctx):
         ctx.dropped.add('vsv in %s' % fname)
         return []
 
-    # -- the idiom set ------------------------------------------------------
+    # the idiom set
     if cmd == 'vsed':
         out = [_rewrite_word(w, ctx, where) for w in args]
         if '-i' not in [_unquote(w) for w in out]:
@@ -592,7 +565,7 @@ def _classify_function(fname, body, ctx):
         words, comp = _tokenize(line)
         first = _unquote(words[0]) if words else ''
 
-        # --- guarded blocks and guard lines (the enumerated B exception) ---
+        # guarded blocks and guard lines (the enumerated B exception)
         if first == 'if':
             kind = _guard_kind(line)
             if kind is None:
@@ -629,7 +602,7 @@ def _classify_function(fname, body, ctx):
             i += 1
             continue
 
-        # --- `;`-sequences: split into simple commands, reprocess ----------
+        # `;`-sequences: split into simple commands, reprocess
         if ';' in words:
             segs, seg = [], []
             for w in words:
@@ -644,7 +617,7 @@ def _classify_function(fname, body, ctx):
             lines[i:i + 1] = [' '.join(s) for s in segs]
             continue
 
-        # --- everything else must be a top-level simple command ------------
+        # everything else must be a top-level simple command
         if first in _KEYWORDS:
             raise _HookC('compound construct (%s) in %s' % (first, fname))
         if first in _ORPHAN_KW:
@@ -672,8 +645,8 @@ _PINNED_HOOK_DROPS = {
 
 def _classify_hooks(functions, ctx):
     """All dump functions -> {(stage, slot): [lines]}.  *_package functions
-    belong to Void's split machinery - chy merges packages, so they carry
-    no build semantics here and are ignored.  Refusals name the hook."""
+    are Void's split machinery; chy merges packages, so they carry no
+    build semantics here and get ignored.  Refusals name the hook."""
     hooks = {}
     for fname in sorted(functions):
         if fname.endswith('_package'):
@@ -697,15 +670,13 @@ def _classify_hooks(functions, ctx):
     return hooks
 
 
-# ---------------------------------------------------------------------------
-# section 7 - path-argument rewriting for configure_args
-# ---------------------------------------------------------------------------
+# section 7: path-argument rewriting for configure_args
 # Exactly one --prefix, emitter-supplied.  --sysconfdir -> $CHY_ROOT/etc.
 # --libdir dropped.  Any =/... absolute path: /usr, /etc, /var roots are
-# rewritten under $CHY_ROOT; anything else refuses.  Deviation, recorded:
-# /run is rewritten too - dbus's evaluated -Dsystem_socket=/run/... must
-# translate per while enumerates only the three; refusing would
-# break the corpus chain, so /run joins the rewrite set (see report).
+# rewritten under $CHY_ROOT; anything else refuses.  /run is also rewritten,
+# a recorded deviation: enumerates only the three, but dbus's evaluated
+# -Dsystem_socket=/run/... must translate per, and refusing would break
+# the corpus chain (see report).
 
 _REWRITE_ROOTS = ('/usr', '/etc', '/var', '/run')
 
@@ -742,9 +713,7 @@ def _rewrite_configure_args(tokens):
     return out
 
 
-# ---------------------------------------------------------------------------
-# section 8 - style emitters and build-script assembly
-# ---------------------------------------------------------------------------
+# section 8: style emitters and build-script assembly
 
 _STYLES = ('gnu-configure', 'configure', 'meson', 'gnu-makefile', 'cmake',
            'NONE')
@@ -873,9 +842,7 @@ def _assemble_build(style, dump, cfg_args, hooks):
     return '\n'.join(lines) + '\n'
 
 
-# ---------------------------------------------------------------------------
-# section 9 - pins: data, not code
-# ---------------------------------------------------------------------------
+# section 9: pins
 # Hermeticity pins: live-root autodetection the spike identified.  Keyed by
 # package name; each entry appends configure args and meta `pinned:` lines.
 
@@ -884,9 +851,7 @@ _PINS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# section 10 - sources, checksums, files/ assets, patches
-# ---------------------------------------------------------------------------
+# section 10: sources, checksums, files/ assets, patches
 
 _ARCHIVE_SUFFIXES = ('.tar.gz', '.tgz', '.tar.xz', '.tar.bz2')
 _VOID_RAW = 'https://raw.githubusercontent.com/void-linux/void-packages'
@@ -943,8 +908,8 @@ def _sources_and_checksums(name, version, dump, assets, srcdir, commit):
 
 def _collect_patches(srcdir, name):
     """patches/ verbatim from the fetched tree.  chy applies *.patch and
-    *.diff only; any other file there would be silently inert -
-    refusal instead."""
+    *.diff only; any other file there would be silently inert,
+    so refuse instead."""
     out = {}
     if srcdir is None:
         return out
@@ -963,11 +928,9 @@ def _collect_patches(srcdir, name):
     return out
 
 
-# ---------------------------------------------------------------------------
-# section 11 - the meta ledger
-# ---------------------------------------------------------------------------
+# section 11: the meta ledger
 # origin/template/void-commit/pkgver/style, then dropped:, pinned:,
-# expect-needed: - each group sorted.  Never a translator version here.
+# expect-needed:, each group sorted.  Never a translator version here.
 
 def _build_meta(name, entry, style, dropped, pinned):
     commit = entry['source-revisions'].partition(':')[2]
@@ -981,17 +944,15 @@ def _build_meta(name, entry, style, dropped, pinned):
     lines += ['dropped: %s' % d for d in sorted(dropped)]
     lines += ['pinned: %s' % p for p in sorted(pinned)]
     # expect-needed: repodata shlib-requires verbatim, byte-sorted (the
-    # determinism rule) - the NEEDED-drift net.
+    # determinism rule); checks NEEDED drift against these.
     for soname in sorted(entry.get('shlib-requires') or []):
         lines.append('expect-needed: %s' % soname)
     return '\n'.join(lines) + '\n'
 
 
-# ---------------------------------------------------------------------------
-# section 12 - self-validation against chy
-# ---------------------------------------------------------------------------
+# section 12: self-validation against chy
 # chytrans validates its own output before writing; a bug in our emission
-# must be as loud as a bad template (refusal, nothing written).
+# refuses the package just like a bad template, and writes nothing.
 
 _NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9+._-]*$') # uppercase is legal
 _VERSION_RE = re.compile(r'^[A-Za-z0-9._+]+$')
@@ -1058,12 +1019,10 @@ def _self_validate(name, files, style):
                 refuse('nested path under patches/')
 
 
-# ---------------------------------------------------------------------------
-# section 13 - translate() and write(): the public entry points
-# ---------------------------------------------------------------------------
+# section 13: translate() and write(), the public entry points
 
 def translate(name, snap, dumpdir):
-    """Translate one package.  Never raises for per-package problems -
+    """Translate one package.  Never raises for per-package problems;
     those come back as Result(ok=False, reason=...) for chytrans' report."""
     result = Result(name)
     try:
@@ -1094,7 +1053,7 @@ def _translate_into(result, name, snap, dumpdir):
         raise Refuse('dump pkgname %r does not match %r'
                      % (dump['pkgname'], name))
     if dump['version'] != version or (dump['revision'] or '1') != revision:
-        raise Refuse('template %s-%s_%s disagrees with repodata %s - '
+        raise Refuse('template %s-%s_%s disagrees with repodata %s: '
                      'incoherent snapshot'
                      % (name, dump['version'], dump['revision'], pkgver))
 
@@ -1102,7 +1061,7 @@ def _translate_into(result, name, snap, dumpdir):
     if style not in _STYLES:
         raise Refuse('build_style %r is outside the allowlist' % style)
 
-    # --- helpers ------------------------------------------------------
+    # helpers
     dropped = set()
     injected = []
     for helper in dump['build_helper'].split():
@@ -1113,14 +1072,14 @@ def _translate_into(result, name, snap, dumpdir):
         else:
             raise Refuse('build_helper %r is not translatable' % helper)
 
-    # --- hooks --------------------------------------------------------
+    # hooks
     ctx = _HookCtx(name)
     hooks = _classify_hooks(functions, ctx)
     dropped |= ctx.dropped
 
-    # --- configure args and the build script --------------------------
-    # style NONE has no configure stage: its configure_args are dead by
-    # definition (a do_configure referencing them would be class C).
+    # configure args and the build script.  style NONE has no
+    # configure stage, so its configure_args are dead (a do_configure
+    # referencing them would be class C).
     cfg_args = ([] if style == 'NONE' else
                 _rewrite_configure_args(dump['configure_args'].split()))
     for pin_arg in _PINS.get(name, {}).get('args', []):
@@ -1129,7 +1088,7 @@ def _translate_into(result, name, snap, dumpdir):
     pinned = list(_PINS.get(name, {}).get('meta', []))
     build_script = _assemble_build(style, dump, cfg_args, hooks)
 
-    # --- style tool injection -----------------------------------------
+    # style tool injection
     if style == 'meson':
         injected += ['meson', 'ninja', 'pkg-config']
     elif style == 'cmake':
@@ -1140,13 +1099,13 @@ def _translate_into(result, name, snap, dumpdir):
         if 'pkg-config' in haystack:
             injected.append('pkg-config')
 
-    # --- packaging metadata with no chy concept ------------------------
+    # packaging metadata with no chy concept
     if dump['conf_files']:
         dropped.add('conf_files')
     if dump['system_accounts']:
         dropped.add('system_accounts')
 
-    # --- dependencies --------------------------------------------------
+    # dependencies
     depends = _translate_deps((entry.get('run_depends') or []),
                               snap.slice, name, 'run_depends')
     makedepends = _translate_deps(
@@ -1155,14 +1114,14 @@ def _translate_into(result, name, snap, dumpdir):
     conflicts = _translate_deps(dump['conflicts'].split(),
                                 snap.slice, name, 'conflicts')
 
-    # --- sources, checksums, patches -----------------------------------
+    # sources, checksums, patches
     srcdir = snap.srcpkg_dir(name)
     commit = entry['source-revisions'].partition(':')[2]
     src_lines, sum_lines = _sources_and_checksums(
         name, version, dump, ctx.assets, srcdir, commit)
     patches = _collect_patches(srcdir, name)
 
-    # --- assemble the recipe -------------------------------------------------
+    # assemble the recipe
     files = {
         'version': ('%s %s\n' % (version, revision)).encode(),
         'sources': ('\n'.join(src_lines) + '\n').encode(),
