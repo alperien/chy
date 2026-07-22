@@ -2,7 +2,7 @@
 # The corpus acceptance, in one script.
 #
 # Heavy: builds the full translated corpus closure from source
-# by asking for one thing - firefox - whose depends pull gtk+3, which
+# by asking for one thing, firefox, whose depends pull gtk+3, which
 # pulls everything else. Then: the drift check (built ELF
 # NEEDED vs each recipe's expect-needed ledger), chy doctor, and the
 # the payoff: Mozilla's binary launching in a rootless prefix.
@@ -34,16 +34,16 @@ printf 'alsa-lib\ngcc\n' >> "$CHY_ROOT/db/provided"
 echo "== install firefox (binary kind) =="
 # firefox's 21 runtime deps are the gtk+3 stack; they
 # are "built OR declared host-provided". Here the host (the Void
-# container, via xbps) provides them - this is the provided model at
+# container, via xbps) provides them. This is the provided model at
 # full scale, and it exercises exactly the new machinery: binary-kind
 # relocation, the launcher, runtime verification, doctor, and launch.
 # (The full FROM-SOURCE corpus build is deferred: it surfaced a real
-# translator gap - per-patch strip levels.)
+# translator gap: per-patch strip levels.)
 awk 'NF {print $1}' "$repo/recipes/firefox/depends" > "$CHY_ROOT/db/provided"
 
 if ! sh chy/chy install firefox > "$work/out" 2> "$work/err"; then
-    echo "firefox install FAILED - stdout:"; tail -n 30 "$work/out"
-    echo "- stderr:"; tail -n 30 "$work/err"; exit 1
+    echo "firefox install FAILED, stdout:"; tail -n 30 "$work/out"
+    echo "stderr:"; tail -n 30 "$work/err"; exit 1
 fi
 grep -q '^chy: firefox: installed 153.0.1 1$' "$work/out" || {
     echo "no completion line"; tail -5 "$work/out"; exit 1; }

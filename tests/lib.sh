@@ -59,7 +59,7 @@ dump_streams() {
 assert_rc() {
     if [ "$RC" -ne "$1" ]; then
         dump_streams
-        fail "expected exit $1, got $RC${2:+ - $2}"
+        fail "expected exit $1, got $RC${2:+: $2}"
     fi
 }
 

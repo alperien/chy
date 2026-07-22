@@ -1,16 +1,16 @@
 #!/bin/sh
 # Integration: the resolver-driven chain, built from TRANSLATED recipes.
 #
-# The translator replaced the hand-written zlib/libpng/freetype with its
-# own output. This proves translated recipes actually build
-# and run: `chy install freetype` resolves freetype's real closure - zlib,
-# libpng, bzip2 (recipes here) plus brotli (host-provided) - orders it
-# deterministically, builds every source recipe in a rootless prefix, and
-# links it through the farm. Needs a C toolchain, make, and network; SKIPs
-# loudly where absent. The CI container provides all three. brotli is the
-# lone closure member that is not one of our recipes, so it stands in for
-# the host base system: installed via xbps and declared provided - exactly
-# the provided-file model.
+# The translator replaced the hand-written zlib/libpng/freetype with
+# its own output, so this checks translated recipes really build and
+# run: `chy install freetype` resolves freetype's real closure (zlib,
+# libpng, bzip2 here, brotli host-provided), orders it
+# deterministically, builds every source recipe in a rootless prefix,
+# links it through the farm. Needs a C toolchain, make, and network;
+# SKIPs loudly where absent (the CI container has all three). brotli is
+# the one closure member that isn't our recipe, so it plays the host
+# base system: installed via xbps and declared provided, the
+# provided-file model.
 set -u
 
 command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 || {
