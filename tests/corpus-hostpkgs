@@ -1,10 +1,11 @@
-# xbps packages the corpus job installs - generated from
-# provided.suggested hint columns + toolchain + firefox runtime extras.
+# xbps packages the corpus job installs: provided.suggested hints +
+# toolchain + firefox runtime deps (host-provided path).
 MesaLib-devel
 SPIRV-LLVM-Translator21
 acl
 adwaita-icon-theme
 alsa-lib
+at-spi2-core
 avahi-libs
 avahi-libs-devel
 bash
@@ -13,25 +14,31 @@ brotli
 brotli-devel
 c-ares
 ca-certificates
+cairo
 clang21-headers
 colord-devel
 cups-devel
 curl
+dbus
 dejavu-fonts-ttf
 docbook-xml
 docbook-xsl
 elfutils-devel
 eudev-libudev
 eudev-libudev-devel
+fontconfig
+freetype
 fribidi
 fribidi-devel
 gcc
 gdbm
+gdk-pixbuf
 gettext
 gettext-devel
 gettext-devel-tools
 gi-docgen
 gir-freedesktop
+glib
 gmp
 gmp-devel
 gnutls
@@ -40,6 +47,7 @@ gobject-introspection
 gperf
 graphite
 graphite-devel
+gtk+3
 gtk-doc
 hwids
 icu-devel
@@ -190,6 +198,7 @@ openssl
 openssl-devel
 p11-kit
 p11-kit-devel
+pango
 patch
 perl
 pkg-config
