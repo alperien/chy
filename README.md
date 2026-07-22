@@ -1,12 +1,24 @@
 # chy
 
-A tiny source-based package manager for hand-built Linux systems. One
-POSIX shell script. No database, no daemon, no root.
+A tiny package manager for hand-built Linux systems. It is rootless,
+relocatble, and source-based by default, with support for upstream
+binary tarballs where compiling would be absurd.
 
-Recipes will not be maintained by hand. A separate tool will translate
-them from [Void Linux][void]'s package tree, so the set follows upstream
-instead of going stale.
+The manager itself is one POSIX shell file, readable in one sitting. No
+database. No daemon. Recipes come from
+[void-packages](https://github.com/void-linux/void-packages), translated
+mechanically; nobody hand-maintains them, so the set doesn't go stale.
 
-Nothing to run yet.
+chy installs, resolves dependencies, removes, and checks what it built.
+It can build from source or unpack an upstream binary tarball. It built
+and launched Firefox in a throwaway prefix. Early days, but it works.
 
-[void]: https://github.com/void-linux/void-packages
+```
+chy/chy          the package manager, one POSIX sh file
+translator/      chytrans: Void templates into chy recipes
+recipes/         the generated recipe corpus
+test             the test suite (run: sh ./test)
+```
+
+One warning up front: recipe pull requests will not be accepted.
+Recipes are generated. When a recipe is wrong, the translator gets fixed.
