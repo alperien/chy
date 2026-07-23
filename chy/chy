@@ -14,6 +14,8 @@
 CHY_VERSION=0.3.0
 set -u
 
+CR=$(printf '\r') # to strip from lines of hand-edited (DOS) recipe files
+
 # output
 # grammar: progress and completion on stdout, warnings and
 # errors on stderr, everything prefixed "chy: <name>:".
@@ -64,12 +66,16 @@ valid_sha256() {
 # The root has to be absolute, no whitespace, no . or .. components.
 # Trailing slashes get stripped, anything else is refused at startup.
 bad_root() {
-    printf 'chy: invalid CHY_ROOT %s: %s\n' "${CHY_ROOT:-(empty)}" "$1" >&2
+    printf 'chy: invalid CHY_ROOT %s: %s\n' "${CHY_ROOT_RAW:-(empty)}" "$1" >&2
     exit 2
 }
 
 check_root() {
-    [ -n "${CHY_ROOT:-}" ] || CHY_ROOT=${HOME:-}/.chy
+    if [ -z "${CHY_ROOT:-}" ]; then
+        [ -n "${HOME:-}" ] || { CHY_ROOT_RAW=; bad_root 'unset, and HOME is unset'; }
+        CHY_ROOT=$HOME/.chy
+    fi
+    CHY_ROOT_RAW=$CHY_ROOT   # what the user set, for diagnostics before we mutate it
     while [ "${CHY_ROOT%/}" != "$CHY_ROOT" ]; do CHY_ROOT=${CHY_ROOT%/}; done
     case $CHY_ROOT in /*) ;; *) bad_root 'not an absolute path' ;; esac
     case $CHY_ROOT in *[[:space:]]*) bad_root 'contains whitespace' ;; esac
@@ -85,6 +91,7 @@ require() { # require <name> <tool>
 # comments.
 sig_lines() {
     while IFS= read -r sl_line || [ -n "$sl_line" ]; do
+        sl_line=${sl_line%"$CR"}
         case $sl_line in ''|'#'*) continue ;; esac
         case $sl_line in *[![:space:]]*) printf '%s\n' "$sl_line" ;; esac
     done <"$1"
@@ -99,7 +106,7 @@ EOF
 }
 
 sha_of() { # print the sha256 digest of a file
-    sha_out=$(sha256sum "$1") || return 1
+    sha_out=$(sha256sum <"$1") || return 1 # stdin: never a filename to escape
     printf '%s\n' "${sha_out%%[[:space:]]*}"
 }
 
@@ -148,6 +155,7 @@ recipe_check() { # recipe_check <name>
     if [ -f "$R_DIR/kind" ]; then
         rc_kind=
         read -r rc_kind <"$R_DIR/kind" || :
+        rc_kind=${rc_kind%"$CR"}
         case $rc_kind in source|binary) ;;
             *) fail "$1" "unsupported kind: ${rc_kind:-(empty)}" ;;
         esac
@@ -156,6 +164,7 @@ recipe_check() { # recipe_check <name>
     # version: one line, "<version>" or "<version> <revision>".
     R_VER='' R_REV=''
     read -r R_VER R_REV <"$R_DIR/version" || :
+    R_VER=${R_VER%"$CR"} R_REV=${R_REV%"$CR"}
     [ -n "$R_REV" ] || R_REV=1
     valid_version "$R_VER" || fail "$1" "invalid version: '$R_VER'"
     valid_version "$R_REV" || fail "$1" "invalid revision: '$R_REV'"
@@ -183,7 +192,8 @@ recipe_check() { # recipe_check <name>
             printf '%s\n' "${rc_url##*/}"
         done | LC_ALL=C sort | uniq -d
     )
-    [ -z "$rc_dup" ] || fail "$1" "duplicate source filename: $rc_dup"
+    [ -z "$rc_dup" ] ||
+        fail "$1" "duplicate source filename: $(printf '%s\n' "$rc_dup" | head -n 1)"
 }
 
 # fetch
@@ -270,12 +280,14 @@ hoist() { # hoist <dir>
     if [ "$h_count" -ne 1 ] || [ ! -d "$h_only" ] || [ -L "$h_only" ]; then
         return 0
     fi
-    mv "$h_only" "$1/.chy-hoist" || return 1
-    for h_e in "$1/.chy-hoist"/* "$1/.chy-hoist"/.[!.]* "$1/.chy-hoist"/..?*; do
+    h_tmp=$CHY_ROOT/build/.hoist   # scratch outside $1, so no source entry collides
+    rm -rf "$h_tmp"
+    mv "$h_only" "$h_tmp" || return 1
+    for h_e in "$h_tmp"/* "$h_tmp"/.[!.]* "$h_tmp"/..?*; do
         { [ -e "$h_e" ] || [ -L "$h_e" ]; } || continue
         mv "$h_e" "$1/" || return 1
     done
-    rmdir "$1/.chy-hoist"
+    rmdir "$h_tmp"
 }
 
 # wipe scratch, stage every source (only the first gets hoisted), then
@@ -449,14 +461,60 @@ shape_check() { # shape_check <name>
 
 # Make the store entry visible: real directories, then one relative
 # symlink per file, pointing through the store/<name> alias.
-link_farm() { # link_farm <name>
+link_farm() { # link_farm <name>: record each created link, nonzero on failure
     while IFS= read -r lf_p; do
         lf_d=${lf_p%/*}
-        [ "$lf_d" = "$lf_p" ] || mkdir -p "$CHY_ROOT/$lf_d"
+        [ "$lf_d" = "$lf_p" ] || mkdir -p "$CHY_ROOT/$lf_d" || return 1
         rm -f "$CHY_ROOT/$lf_p"
-        ln -s "$(updots "$lf_p")store/$1/$lf_p" "$CHY_ROOT/$lf_p" ||
-            fail "$1" "cannot link $lf_p"
+        ln -s "$(updots "$lf_p")store/$1/$lf_p" "$CHY_ROOT/$lf_p" || return 1
+        printf '%s\n' "$lf_p" >>"$CHY_ROOT/build/linked"
     done <"$LIST"
+}
+
+# Commit rollback helpers (the install links completely or not at
+# all). The previous install stays intact until the new farm links land;
+# on any failure we make sure to undo the new links, drop the new store entry, restore
+# the old alias, and re-link the old farm.
+restore_alias() { # restore_alias <name> <previous target, or empty>
+    if [ -n "$2" ]; then ln -sfn "$2" "$CHY_ROOT/store/$1"
+    else rm -f "$CHY_ROOT/store/$1"; fi
+}
+
+rollback_farm() { # remove the farm links this install created
+    [ -f "$CHY_ROOT/build/linked" ] || return 0
+    while IFS= read -r rb_p || [ -n "$rb_p" ]; do
+        [ -n "$rb_p" ] || continue
+        rm -f "$CHY_ROOT/$rb_p"
+        prune_up "$rb_p"
+    done <"$CHY_ROOT/build/linked"
+}
+
+relink_prev() { # re-link the previous install's paths this install clobbered
+    rp_m=$CHY_ROOT/db/installed/$1/manifest
+    [ -f "$rp_m" ] || return 0
+    while IFS= read -r rp_p || [ -n "$rp_p" ]; do
+        [ -n "$rp_p" ] || continue
+        { [ -e "$CHY_ROOT/$rp_p" ] || [ -L "$CHY_ROOT/$rp_p" ]; } && continue
+        rp_d=${rp_p%/*}
+        [ "$rp_d" = "$rp_p" ] || mkdir -p "$CHY_ROOT/$rp_d"
+        ln -s "$(updots "$rp_p")store/$1/$rp_p" "$CHY_ROOT/$rp_p" 2>/dev/null || :
+    done <"$rp_m"
+}
+
+retire_prev() { # retire_prev <name> <prev version>: drop stale links, old store, old db
+    rp_m=$CHY_ROOT/db/installed/$1/manifest
+    if [ -f "$rp_m" ]; then
+        LC_ALL=C awk 'NR == FNR { keep[$0] = 1; next } !($0 in keep)' \
+            "$LIST" "$rp_m" | while IFS= read -r rp_p || [ -n "$rp_p" ]; do
+            [ -n "$rp_p" ] || continue
+            [ -L "$CHY_ROOT/$rp_p" ] || continue
+            [ "$(owner_of "$CHY_ROOT/$rp_p")" = "$1" ] || continue
+            rm -f "$CHY_ROOT/$rp_p"
+            prune_up "$rp_p"
+        done
+    fi
+    [ "$2" = "$R_VER" ] || rm -rf "$CHY_ROOT/store/$1-$2"
+    rm -rf "$CHY_ROOT/db/installed/$1"
 }
 
 # The db entry is written last; its presence means "installed".
@@ -489,7 +547,7 @@ ELF_MAGIC=$(printf '\177ELF')
 shlib_hint() { # " (package: <pkg>)" when shlibs.map knows the soname
     [ -f "$CHY_ROOT/shlibs.map" ] || return 0
     sh_pkg=$(sig_lines "$CHY_ROOT/shlibs.map" |
-        LC_ALL=C awk -v s="$1" '$1 == s { print $2; exit }')
+        LC_ALL=C awk -v s="$1" 'NF >= 2 && $1 == s { print $2; exit }')
     [ -z "$sh_pkg" ] || printf ' (package: %s)\n' "$sh_pkg"
 }
 
@@ -499,7 +557,10 @@ scan_needs() { # scan_needs <store entry dir>
     # via the launcher convention or a source ELF's own farm rpath
     # ($ORIGIN for vendor trees), so a library cross-referencing its
     # siblings is not a missing dependency.
-    sn_own=$(find "$1" \( -type f -o -type l \) -name '*.so*' 2>/dev/null |
+    # -L, -type f: a self-shipped soname counts only if it resolves to a
+    # real file. A dangling symlink satisfies nothing, so it must not
+    # suppress a genuine "not found".
+    sn_own=$(find -L "$1" -type f -name '*.so*' 2>/dev/null |
         while IFS= read -r sn_o; do printf '%s\n' "${sn_o##*/}"; done |
         LC_ALL=C sort -u)
     find "$1" -type f -print | while IFS= read -r sn_f; do
@@ -507,10 +568,21 @@ scan_needs() { # scan_needs <store entry dir>
         { IFS= read -r sn_head <"$sn_f"; } 2>/dev/null || : # no per-file
         case $sn_head in "$ELF_MAGIC"*) ;; *) continue ;; esac      # spawn
         LD_LIBRARY_PATH="$CHY_ROOT/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-            ldd "$sn_f" 2>/dev/null || :
-    done | LC_ALL=C awk '$2 == "=>" && $3 == "not" && $4 == "found" { print $1 }' |
+            ldd "$sn_f" 2>&1 || :
+    done | LC_ALL=C awk '
+        $2 == "=>" && $3 == "not" && $4 == "found" { print $1 }
+        # an annoying edge case: a candidate that exists but is not a loadable ELF
+        # loader abort instead of printing "=> not found"; recover the
+        # offending soname from that message so it is not silently lost.
+        /: error while loading shared libraries: / {
+            elp = $0
+            sub(/^.*error while loading shared libraries: /, "", elp)
+            sub(/:.*$/, "", elp)
+            nseg = split(elp, seg, "/")
+            print seg[nseg]
+        }' |
         LC_ALL=C sort -u | while IFS= read -r sn_s; do
-            printf '%s\n' "$sn_own" | LC_ALL=C grep -qxF "$sn_s" && continue
+            printf '%s\n' "$sn_own" | LC_ALL=C grep -qxF -- "$sn_s" && continue
             printf '%s%s\n' "$sn_s" "$(shlib_hint "$sn_s")"
         done
 }
@@ -548,7 +620,7 @@ unlink_links() { # unlink_links <name>
     ul_m=$CHY_ROOT/db/installed/$1/manifest
     [ -f "$ul_m" ] || return 0
     require "$1" readlink
-    while IFS= read -r ul_p; do
+    while IFS= read -r ul_p || [ -n "$ul_p" ]; do
         [ -n "$ul_p" ] || continue
         ul_f=$CHY_ROOT/$ul_p
         if [ -L "$ul_f" ]; then
@@ -607,20 +679,39 @@ do_install() { # do_install <name> <requested: 1|0>
     normalize "$1"                                 # 5
     conflict_scan "$1"                             # 6
     shape_check "$1"
-    if [ -d "$CHY_ROOT/db/installed/$1" ]; then    # 7: reinstall; the old
-        do_remove "$1"                             #    install goes only now
+    # 7-10: commit. The previous install (its db entry and old store dir)
+    # is kept until the new farm links succeed, so a failure here rolls
+    # back to it and a failed commit costs nothing.
+    di_prevver=
+    if [ -f "$CHY_ROOT/db/installed/$1/version" ]; then
+        read -r di_prevver _ <"$CHY_ROOT/db/installed/$1/version" || :
+        di_prevver=${di_prevver%"$CR"}
     fi
+    di_alias=
+    [ ! -L "$CHY_ROOT/store/$1" ] || di_alias=$(readlink "$CHY_ROOT/store/$1")
+
     say "$1" "link $1-$R_VER"
     mkdir -p "$CHY_ROOT/store"
+    : >"$CHY_ROOT/build/linked"
     rm -rf "$CHY_ROOT/store/$1-$R_VER"
-    mv "$NORM" "$CHY_ROOT/store/$1-$R_VER" ||      # 8: place the store entry
+    mv "$NORM" "$CHY_ROOT/store/$1-$R_VER" ||       # 8: place the store entry
         fail "$1" "cannot place the store entry"
-    rm -f "$CHY_ROOT/store/$1"
-    ln -s "$1-$R_VER" "$CHY_ROOT/store/$1" ||      # 9: point the alias
+    if ! ln -sfn "$1-$R_VER" "$CHY_ROOT/store/$1"; then    # 9: point the alias
+        rm -rf "$CHY_ROOT/store/$1-$R_VER"
+        restore_alias "$1" "$di_alias"
         fail "$1" "cannot point the alias"
-    link_farm "$1"                                 # 10
-    verify_runtime "$1"                            # 11: warnings only
-    write_db "$1" "$2"                             # 12
+    fi
+    if ! link_farm "$1"; then                       # 10: link, with rollback
+        rollback_farm "$1"
+        rm -rf "$CHY_ROOT/store/$1-$R_VER"
+        restore_alias "$1" "$di_alias"
+        relink_prev "$1"
+        fail "$1" "cannot link the farm; rolled back"
+    fi
+    [ -z "$di_prevver" ] || retire_prev "$1" "$di_prevver" # 7, now safe
+
+    verify_runtime "$1"                             # 11: warnings only
+    write_db "$1" "$2"                              # 12
     say "$1" "installed $R_VER $R_REV"
 }
 
@@ -636,6 +727,8 @@ do_install() { # do_install <name> <requested: 1|0>
 resolve() { # resolve <space-separated requested names>; sets ORDER
     RES=$CHY_ROOT/build/resolve
     rm -rf "$RES"; mkdir -p "$RES"
+    require install sort
+    require install awk
     : >"$RES/edges"; : >"$RES/missing"
 
     NEEDED=" $1 " rv_seen=" $1 " REST=$1
@@ -668,7 +761,7 @@ resolve() { # resolve <space-separated requested names>; sets ORDER
         rv_m=$(LC_ALL=C sort "$RES/missing" | head -n 1)
         rv_by=install
         in_set "$rv_m" "$REQUESTED" || rv_by=$(awk -v m="$rv_m" \
-            '$2 == m { print $1 }' "$RES/edges" | LC_ALL=C sort | head -n 1)
+            '($2 "") == (m "") { print $1 }' "$RES/edges" | LC_ALL=C sort | head -n 1)
         fail "$rv_by" "needs $rv_m, which has no recipe and is not provided"
     fi
 
@@ -728,12 +821,17 @@ resolve_conflicts() {
 # and exit 3; under cascade (remove -r), drop that member's cycle edge
 # and carry on.
 order_awk() { # order_awk <install|cascade>
-    LC_ALL=C sort -o "$RES/needed" "$RES/needed"
+    # Byte-sort both inputs: names[] has to arrive in byte order, and a
+    # byte-ordered edge list makes cycle-path tie-breaks deterministic
+    # whatever the recipe line order. The sorts get checked so a failure
+    # can't turn into a silently wrong order.
+    LC_ALL=C sort -o "$RES/needed" "$RES/needed" || return 2
+    LC_ALL=C sort -u -o "$RES/edges" "$RES/edges" || return 2
     LC_ALL=C awk -v mode="$1" '
         # Shortest live path a => b, breadth-first, smaller names claimed
         # first within a hop; "" when unreachable, "a" when a == b.
         function find_path(a, b,    qh, qt, q, cur, m, arr, k, w, out) {
-            if (a == b) return a
+            if ((a "") == (b "")) return a   # string compare: names like 1e2
             gen++; vis[a] = gen
             qh = 1; qt = 1; q[1] = a
             while (qh <= qt) {
@@ -748,7 +846,7 @@ order_awk() { # order_awk <install|cascade>
             }
             if (vis[b] != gen) return ""
             out = b
-            for (cur = b; cur != a; cur = par[cur]) out = par[cur] " -> " out
+            for (cur = b; (cur "") != (a ""); cur = par[cur]) out = par[cur] " -> " out
             return out
         }
         # The byte-smallest live neighbour of c that leads back to c;
@@ -759,7 +857,7 @@ order_awk() { # order_awk <install|cascade>
             for (k = 1; k <= m; k++) {
                 w = arr[k]
                 if (w == "" || !live[c, w] || done[w]) continue
-                if (best != "" && w >= best) continue
+                if (best != "" && (w "") >= (best "")) continue
                 if (find_path(w, c) != "") best = w
             }
             return best
@@ -856,6 +954,8 @@ cascade_remove() {
     done
     RES=$CHY_ROOT/build/resolve
     rm -rf "$RES"; mkdir -p "$RES"
+    require remove sort
+    require remove awk
 
     ca_set=$ca_named ca_seen=$ca_named REST=$ca_named
     while pop; do                            # the recorded-depends closure
@@ -991,14 +1091,14 @@ doctor_scan() {
                 done
 
         [ -f "$ds_m" ] || continue
-        while IFS= read -r ds_mp; do               # 2: broken farm links
+        while IFS= read -r ds_mp || [ -n "$ds_mp" ]; do   # 2: broken farm links
             [ -n "$ds_mp" ] || continue
             [ -L "$CHY_ROOT/$ds_mp" ] || continue
             [ "$(owner_of "$CHY_ROOT/$ds_mp")" = "$ds_p" ] || continue
             [ -e "$CHY_ROOT/$ds_mp" ] ||
                 printf 'chy: doctor: %s: broken link %s\n' "$ds_p" "$ds_mp"
         done <"$ds_m"
-        while IFS= read -r ds_mp; do               # 3: manifest drift
+        while IFS= read -r ds_mp || [ -n "$ds_mp" ]; do   # 3: manifest drift
             [ -n "$ds_mp" ] || continue
             if [ -L "$CHY_ROOT/$ds_mp" ]; then
                 [ "$(owner_of "$CHY_ROOT/$ds_mp")" = "$ds_p" ] ||
@@ -1030,7 +1130,8 @@ cmd_doctor() {
 check_root
 
 case ${1-} in
-    version)      printf '%s\n' "$CHY_VERSION" ;;
+    version)      shift; [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+                  printf '%s\n' "$CHY_VERSION" ;;
     ''|-h|--help) usage ;;
     install)      shift; cmd_install "$@" ;;
     remove)       shift; cmd_remove "$@" ;;
