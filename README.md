@@ -1,7 +1,7 @@
 # chy
 
 A tiny package manager for hand-built Linux systems. It is rootless,
-relocatble, and source-based by default, with support for upstream
+relocatable, and source-based by default, with support for upstream
 binary tarballs where compiling would be absurd.
 
 The manager itself is one POSIX shell file, readable in one sitting. No
