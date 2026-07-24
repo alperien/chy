@@ -1,0 +1,3 @@
+exit :: 1
+stderr-refusal :: cnry :: unexpected command
+absent :: recipes/cnry

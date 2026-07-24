@@ -1,0 +1,11 @@
+# Template file for 'nob'
+pkgname=nob
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/nob"
+distfiles="https://example.org/dist/"
+checksum=f25002c0eca6e044dcd1ccdcd4677763114b51824af32a17b1ab14523b2b408d

@@ -235,6 +235,11 @@ def run_checks(ctx, checks_path, fails):
 # universal invariants
 
 def universal(ctx, fails):
+    # A run that can't load its snapshot at all prints the error as
+    # `chytrans: <msg>`, exits 1 and emits nothing; the invariants
+    # bind runs that actually translate.
+    if ctx.rc != 0 and not os.listdir(ctx.out):
+        return
     for rel in ("report", "shlibs.map", "provided.suggested", "TRANSLATOR_VERSION"):
         if not os.path.isfile(os.path.join(ctx.out, rel)):
             fails.append("universal: %s missing (a run emits it)" % rel)

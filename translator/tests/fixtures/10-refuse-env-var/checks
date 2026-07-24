@@ -1,3 +1,5 @@
-exit :: 1
-stderr-refusal :: envx :: FOO
-absent :: recipes/envx
+# amended: only the four env vars are capturable; a template-local
+# FOO=bar is inert and must never leak into the emitted build script
+exit :: 0
+exists :: recipes/envx/build
+file-not-has :: recipes/envx/build :: FOO

@@ -1,0 +1,15 @@
+# Template file for 'cnry'
+pkgname=cnry
+version=1.0
+revision=1
+build_style=gnu-configure
+rm -f /tmp/chytrans-canary-rm
+touch /tmp/chytrans-canary-touch
+( touch /tmp/chytrans-canary-subshell )
+CANARY="$(touch /tmp/chytrans-canary-csub)"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/cnry"
+distfiles="https://example.org/dist/cnry-${version}.tar.gz"
+checksum=a8c481ea740a42c35c49ad6d763ce601eef5de4cae19e143ac9e9507f25bd472

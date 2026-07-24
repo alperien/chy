@@ -32,6 +32,7 @@ DEFAULT_SHLIBS = (
 
 # pinned shape: gnu-configure with no template args.
 GNU_MIN_BUILD = (
+    '#!/bin/sh -e\n'
     './configure \\\n'
     '    --prefix="$CHY_PREFIX" \\\n'
     '    --sysconfdir="$CHY_ROOT/etc"\n'
@@ -297,6 +298,7 @@ def case_05():
     ]))
     c.slice(E("zconf"))
     c.expect("recipes/zconf/build",
+             '#!/bin/sh -e\n'
              './configure \\\n'
              '    --prefix="$CHY_PREFIX" \\\n'
              '    --shared\n'
@@ -389,7 +391,8 @@ def case_09():
     c.slice(E("pixm"))
     c.checks(
         "exit :: 0\n"
-        'file-first-line :: recipes/pixm/build :: '
+        "file-first-line :: recipes/pixm/build :: #!/bin/sh -e\n"
+        'file-line-n :: recipes/pixm/build :: 2 :: '
         'export LDFLAGS="${LDFLAGS:+$LDFLAGS }-Wl,-z,relro"\n'
         "file-has :: recipes/pixm/build :: ./configure\n"
     )
@@ -397,16 +400,19 @@ def case_09():
 
 
 def case_10():
-    # any template env var outside CFLAGS/CXXFLAGS/CPPFLAGS/LDFLAGS is
-    # a refusal.
+    # only CFLAGS/CXXFLAGS/CPPFLAGS/LDFLAGS are capturable; any
+    # other template-level variable is an inert template-local and must
+    # never leak into the emitted build script.
     c = Case("10-refuse-env-var")
     c.names("envx")
     c.template("envx", tmpl("envx", lines=["FOO=bar"]))
     c.slice(E("envx"))
     c.checks(
-        "exit :: 1\n"
-        "stderr-refusal :: envx :: FOO\n"
-        "absent :: recipes/envx\n"
+        "# amended: only the four env vars are capturable; a template-local\n"
+        "# FOO=bar is inert and must never leak into the emitted build script\n"
+        "exit :: 0\n"
+        "exists :: recipes/envx/build\n"
+        "file-not-has :: recipes/envx/build :: FOO\n"
     )
     c.finish()
 
@@ -614,6 +620,7 @@ def case_19():
     )))
     c.slice(E("zst"))
     c.expect("recipes/zst/build",
+             '#!/bin/sh -e\n'
              'make PREFIX="$CHY_PREFIX"\n'
              'make PREFIX="$CHY_PREFIX" DESTDIR="$1" install\n')
     c.checks(
@@ -828,6 +835,162 @@ def case_26():
     c.finish()
 
 
+# snapshot-loading cases
+
+def case_27():
+    # a snapshot whose repodata slice does not parse is refused
+    # wholesale: one `chytrans: <path>: unreadable repodata slice: ...`
+    # stderr line, exit 1, nothing written (never a traceback).
+    c = Case("27-snapshot-unreadable")
+    c.names("app")
+    c.template("app", tmpl("app"))
+    c.snap("repodata.slice.plist",
+           b'<?xml version="1.0" encoding="UTF-8"?>\n'
+           b'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'
+           b' "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+           b'<plist version="1.0">\n<dict>\n\t<key>app</key>\n',
+           REPODATA_URL)
+    c.checks(
+        "exit :: 1\n"
+        "stderr-matches :: "
+        r"^chytrans: .*repodata\.slice\.plist: unreadable repodata slice:"
+        "\n"
+        "absent :: report\n"
+        "absent :: recipes\n"
+    )
+    c.finish()
+
+
+def case_28():
+    # a slice that parses but is not a plist dict (array root)
+    # is the same wholesale refusal, not a mid-run crash after the
+    # ledger files were skipped.
+    c = Case("28-snapshot-not-dict")
+    c.names("app")
+    c.template("app", tmpl("app"))
+    c.snap("repodata.slice.plist",
+           plistlib.dumps([{"pkgver": "app-1.0_1"}], fmt=plistlib.FMT_XML),
+           REPODATA_URL)
+    c.checks(
+        "exit :: 1\n"
+        "stderr-matches :: "
+        r"^chytrans: .*repodata\.slice\.plist: repodata slice is not a"
+        " plist dict$\n"
+        "absent :: report\n"
+        "absent :: recipes\n"
+    )
+    c.finish()
+
+
+# rewrite and hook tightening cases
+
+def case_29():
+    # golden assertion: a bare /usr followed by ':' or '=' (path list
+    # or assignment, make FOO=/usr:/opt/x) is still a /usr-rooted path
+    # and must refuse, never survive into the emitted build script.
+    c = Case("29-refuse-usr-pathlist")
+    c.names("plst")
+    c.template("plst", tmpl("plst", funcs=(
+        "post_build() {\n"
+        "\tmake FOO=/usr:/opt/x\n"
+        "}\n"
+    )))
+    c.slice(E("plst"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: plst :: /usr:/opt/x\n"
+        "absent :: recipes/plst\n"
+    )
+    c.finish()
+
+
+def case_30():
+    # the enumerated B exception is a block guarded by the
+    # CROSS_BUILD variable itself; an if testing a lookalike name such
+    # as MY_CROSS_BUILD_FLAG is an ordinary compound construct and must
+    # refuse (class C), never be silently dropped.
+    c = Case("30-refuse-guard-lookalike")
+    c.names("gdlk")
+    c.template("gdlk", tmpl("gdlk", funcs=(
+        "post_install() {\n"
+        '\tif [ -n "$MY_CROSS_BUILD_FLAG" ]; then\n'
+        "\t\trm -f README.md\n"
+        "\tfi\n"
+        "}\n"
+    )))
+    c.slice(E("gdlk"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: gdlk :: post_install\n"
+        "absent :: recipes/gdlk\n"
+    )
+    c.finish()
+
+
+def case_31():
+    # single quotes suppress shell path semantics; a vsed script
+    # editing '/usr/lib' inside single quotes is sed text, not a path
+    # argument, and must translate verbatim with no $CHY_ROOT rewriting.
+    c = Case("31-vsed-quoted-path")
+    c.names("vq")
+    c.template("vq", tmpl("vq", funcs=(
+        "post_patch() {\n"
+        "\tvsed -e 's|/usr/lib|/lib|g' foo.pc\n"
+        "}\n"
+    )))
+    c.slice(E("vq"))
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: recipes/vq/build :: sed -i -e 's|/usr/lib|/lib|g' foo.pc\n"
+        "file-not-has :: recipes/vq/build :: CHY_ROOT/usr\n"
+        "file-line :: report :: translated: vq\n"
+    )
+    c.finish()
+
+
+# distfiles cases
+
+def case_32():
+    # a distfile URL with no path segment after the host (trailing
+    # '/' or bare host) names no file; refusal, not an invented
+    # basename/mirror pair.
+    c = Case("32-refuse-distfile-nobase")
+    c.names("nob")
+    c.template("nob", tmpl("nob", distfiles="https://example.org/dist/",
+                           checksum=fake_sha("nob-dir")))
+    c.slice(E("nob"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: nob :: basename\n"
+        "absent :: recipes/nob\n"
+    )
+    c.finish()
+
+
+# evaluation-isolation cases
+
+def case_33():
+    # sourcing an untrusted template must execute nothing real.  A
+    # body that calls external commands (directly, in a subshell, in a
+    # command substitution) is an unexpected-command hard failure and a
+    # per-package refusal; none of the commands may actually run.
+    c = Case("33-refuse-eval-canary")
+    c.names("cnry")
+    c.template("cnry", tmpl("cnry", lines=[
+        "rm -f /tmp/chytrans-canary-rm",
+        "touch /tmp/chytrans-canary-touch",
+        "( touch /tmp/chytrans-canary-subshell )",
+        'CANARY="$(touch /tmp/chytrans-canary-csub)"',
+    ]))
+    c.slice(E("cnry"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: cnry :: unexpected command\n"
+        "absent :: recipes/cnry\n"
+    )
+    c.finish()
+
+
 # verification
 
 DIRECTIVE_ARITY = {
@@ -869,8 +1032,13 @@ def verify(root):
     idx = {}
     if os.path.isfile(plist_path):
         with open(plist_path, "rb") as f:
-            idx = plistlib.load(f)
-        for k, v in sorted(idx.items()):
+            try:
+                idx = plistlib.load(f)
+            except Exception:
+                idx = None # unreadable on purpose (bad-snapshot cases)
+        if not isinstance(idx, dict):
+            idx = None      # wrong-rooted on purpose; the case pins it
+        for k, v in sorted((idx or {}).items()):
             if not PKGVER_RX.match(v.get("pkgver", "")):
                 bad("slice %s: bad pkgver %r" % (k, v.get("pkgver")))
             if not v.get("pkgver", "").startswith(k + "-"):
@@ -882,7 +1050,7 @@ def verify(root):
     if not names:
         bad("empty names file")
     for n in names:
-        if n not in idx:
+        if idx is not None and n not in idx:
             bad("requested %s not in slice" % n)
         tpl = os.path.join(root, "snapshot/srcpkgs", n, "template")
         premeta = os.path.join(root, "pre/recipes", n, "meta")

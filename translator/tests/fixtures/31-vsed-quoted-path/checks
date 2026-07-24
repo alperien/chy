@@ -1,0 +1,4 @@
+exit :: 0
+file-line :: recipes/vq/build :: sed -i -e 's|/usr/lib|/lib|g' foo.pc
+file-not-has :: recipes/vq/build :: CHY_ROOT/usr
+file-line :: report :: translated: vq

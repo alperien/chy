@@ -1,0 +1,17 @@
+# Template file for 'gdlk'
+pkgname=gdlk
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/gdlk"
+distfiles="https://example.org/dist/gdlk-${version}.tar.gz"
+checksum=a710b238e0711156c4d7b0271ecc44013d7a49ef086428538e298a27c22fc823
+
+post_install() {
+	if [ -n "$MY_CROSS_BUILD_FLAG" ]; then
+		rm -f README.md
+	fi
+}

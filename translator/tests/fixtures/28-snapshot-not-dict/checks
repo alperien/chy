@@ -1,0 +1,4 @@
+exit :: 1
+stderr-matches :: ^chytrans: .*repodata\.slice\.plist: repodata slice is not a plist dict$
+absent :: report
+absent :: recipes

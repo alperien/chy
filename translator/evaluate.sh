@@ -10,6 +10,10 @@
 #     harvests build_options/build_options_default; pass 2 re-sources in a
 #     FRESH subshell with build_option_<x>=1 per default (never re-source in
 #     one shell: string += assignments would double-append);
+#   * while a template is being sourced, PATH points at an empty directory
+#     (readonly, so the template can't repoint it): only the stub functions
+#     and bash builtins resolve, and every real binary a template names is
+#     an unexpected command;
 #   * command_not_found_handle makes any unexpected command at source time a
 #     hard failure, named on stderr;
 #   * no process substitution anywhere (/dev/fd may be absent; the spike hit
@@ -72,7 +76,12 @@ CNF_LOG="$WORKDIR/cnf.log"
 STAGE="$WORKDIR/stage"          # dump staged here, installed only on success
 SANDBOX1="$WORKDIR/sandbox1"    # empty cwd for pass 1
 SANDBOX2="$WORKDIR/sandbox2"    # empty cwd for pass 2
-mkdir "$STAGE" "$SANDBOX1" "$SANDBOX2" || die "cannot set up workspace"
+NOPATH="$WORKDIR/nopath"        # empty; PATH while a template is sourced
+mkdir "$STAGE" "$SANDBOX1" "$SANDBOX2" "$NOPATH" || die "cannot set up workspace"
+
+# pass 2 stages the dump after PATH is neutralized: pin the one external
+# command it needs by absolute path now
+MKDIR=$(type -P mkdir) || die "mkdir not found on PATH"
 
 # stub env
 # Emulates a native x86_64/glibc build, mirroring xbps-src's setup enough for
@@ -200,10 +209,18 @@ _esc() { # $1 = raw value; result in $_esc_out
 (
     setup_xbps_env
     cd "$SANDBOX1" || exit 97
+    # isolation: nothing but stub functions and builtins may resolve
+    # while the untrusted template is sourced
+    readonly PATH="$NOPATH"
     # shellcheck source=/dev/null
     if ! source "$TEMPLATE" >/dev/null 2>"$WORKDIR/p1.err"; then
         exit 96
     fi
+    # sandbox purity: sourcing must not have created files in the cwd
+    shopt -s nullglob dotglob
+    _stray=("$SANDBOX1"/*)
+    shopt -u nullglob dotglob
+    [ "${#_stray[@]}" -eq 0 ] || exit 95
     printf '%s\n' "${build_options-}" >"$WORKDIR/p1.options"
     printf '%s\n' "${build_options_default-}" >"$WORKDIR/p1.defaults"
     exit 0
@@ -213,6 +230,7 @@ check_unexpected_commands
 case $rc in
     0) ;;
     96) die "$TEMPLATE: template source error (pass 1)$(first_err_line "$WORKDIR/p1.err")" ;;
+    95) die "$TEMPLATE: template wrote to the filesystem at source time" ;;
     97) die "internal: cannot enter sandbox (pass 1)" ;;
     *) die "$TEMPLATE: evaluation failed with status $rc (pass 1)" ;;
 esac
@@ -250,6 +268,8 @@ done
     done <<<"$(declare -F)"
 
     cd "$SANDBOX2" || exit 97
+    # isolation, as in pass 1 (the staging below is builtins plus $MKDIR)
+    readonly PATH="$NOPATH"
     # shellcheck source=/dev/null
     if ! source "$TEMPLATE" >/dev/null 2>"$WORKDIR/p2.err"; then
         exit 96
@@ -269,7 +289,7 @@ done
     esac
 
     _pkgdump="$STAGE/$pkgname"
-    mkdir -p "$_pkgdump/functions" || exit 91
+    "$MKDIR" -p "$_pkgdump/functions" || exit 91
 
     # vars: the 19 pinned keys, always present, order
     {

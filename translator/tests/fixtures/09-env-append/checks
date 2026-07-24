@@ -1,3 +1,4 @@
 exit :: 0
-file-first-line :: recipes/pixm/build :: export LDFLAGS="${LDFLAGS:+$LDFLAGS }-Wl,-z,relro"
+file-first-line :: recipes/pixm/build :: #!/bin/sh -e
+file-line-n :: recipes/pixm/build :: 2 :: export LDFLAGS="${LDFLAGS:+$LDFLAGS }-Wl,-z,relro"
 file-has :: recipes/pixm/build :: ./configure

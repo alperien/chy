@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.parsers.expat
 
 import repodata
 
@@ -74,7 +75,15 @@ def load(dir):
         raise SnapshotError("%s: not a snapshot (missing repodata.slice.plist"
                             " or common-shlibs)" % dir)
     with open(slice_path, "rb") as f:
-        slice = plistlib.load(f)
+        try:
+            slice = plistlib.load(f)
+        except (plistlib.InvalidFileException,
+                xml.parsers.expat.ExpatError, ValueError) as e:
+            raise SnapshotError("%s: unreadable repodata slice: %s"
+                                % (slice_path, e))
+    if not isinstance(slice, dict):
+        raise SnapshotError("%s: repodata slice is not a plist dict"
+                            % slice_path)
     with open(shlibs_path, "r", encoding="utf-8", errors="replace") as f:
         shlibs = f.read()
     manifest = []

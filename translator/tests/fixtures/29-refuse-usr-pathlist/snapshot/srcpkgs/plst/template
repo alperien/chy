@@ -1,0 +1,15 @@
+# Template file for 'plst'
+pkgname=plst
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/plst"
+distfiles="https://example.org/dist/plst-${version}.tar.gz"
+checksum=de351e8c839454621946ba2d5db7a2b5d76bab24693a11464b3ae9f1de104762
+
+post_build() {
+	make FOO=/usr:/opt/x
+}

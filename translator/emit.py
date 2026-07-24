@@ -360,10 +360,36 @@ def _is_makejobs(word):
     return core in ('$makejobs', '${makejobs}')
 
 
+def _squoted_spans(text):
+    """[start, end) spans lying inside single quotes.  Shell rules: a
+    single quote inside a double-quoted span opens nothing."""
+    spans = []
+    quote = None
+    start = 0
+    for i, c in enumerate(text):
+        if quote == "'":
+            if c == "'":
+                spans.append((start, i))
+                quote = None
+        elif quote == '"':
+            if c == '"':
+                quote = None
+        elif c == "'":
+            quote = "'"
+            start = i + 1
+        elif c == '"':
+            quote = '"'
+    if quote == "'":
+        spans.append((start, len(text)))
+    return spans
+
+
 def _check_no_bare_abs(word, where):
     """No literal /usr (or /etc, /var) survives unless it hangs off
     $CHY_ROOT / $CHY_PREFIX / the DESTDIR rewrite (the golden assertion,
-    applied here at classification time)."""
+    applied here at classification time).  Single-quoted spans are sed
+    text, not paths (single quotes suppress shell path semantics)."""
+    spans = _squoted_spans(word)
     for root in ('/usr', '/etc', '/var'):
         start = 0
         while True:
@@ -371,8 +397,12 @@ def _check_no_bare_abs(word, where):
             if k < 0:
                 break
             end = k + len(root)
+            if any(a <= k < b for a, b in spans):
+                start = end
+                continue
             follower = word[end:end + 1]
-            if follower and follower not in '/"\' ':
+            # ':' and '=' end a path too (FOO=/usr:/opt): still a root
+            if follower and follower not in '/"\' :=':
                 start = end # /users, /etcetera: not a path root
                 continue
             before = word[:k]
@@ -546,10 +576,17 @@ def _xlate_simple(words, fname, ctx):
 
 def _guard_kind(line):
     """CROSS_BUILD-guarded -> 'cross-build'; XBPS_CHECK_PKGS-guarded
-    (check-only conditional, class B) -> 'check-only'; else None."""
-    if 'CROSS_BUILD' in line:
+    (check-only conditional, class B) -> 'check-only'; else None.
+    The guard variable must be tested: a word-bounded $VAR/${VAR}
+    reference in the condition part of the line.  A lookalike name
+    (MY_CROSS_BUILD_FLAG) is no guard; its if stays class C."""
+    if line.startswith('['):
+        cond = line.split(']', 1)[0]
+    else:
+        cond = re.split(r';\s*then\b', line, maxsplit=1)[0]
+    if re.search(r'\$\{?CROSS_BUILD\b', cond):
         return 'cross-build'
-    if 'XBPS_CHECK_PKGS' in line:
+    if re.search(r'\$\{?XBPS_CHECK_PKGS\b', cond):
         return 'check-only'
     return None
 
@@ -875,9 +912,12 @@ def _sources_and_checksums(name, version, dump, assets, srcdir, commit):
         if '>' in url:
             raise Refuse('distfile %r uses Void\'s rename syntax; chy '
                          'sources cannot rename' % url)
-        fname = url.rstrip('/').rsplit('/', 1)[-1]
-        if not fname:
+        # basename from the un-stripped URL: a trailing '/' or a bare
+        # host names no file
+        upath = url.partition('://')[2]
+        if '/' not in upath or upath.endswith('/'):
             raise Refuse('distfile %r has no basename' % url)
+        fname = url.rsplit('/', 1)[-1]
         mirror = ('https://sources.voidlinux.org/%s-%s/%s'
                   % (name, version, fname))
         src_lines.append('%s %s' % (url, mirror))
@@ -995,14 +1035,19 @@ def _self_validate(name, files, style):
     if not build.strip():
         refuse('empty build script')
     # golden assertion: no literal /usr-rooted path argument survives.
-    for m in re.finditer(r'/usr(?=[/\s"\']|$)', build):
-        before = build[:m.start()]
-        if before.endswith('"'):
-            before = before[:-1]
-        if not (before.endswith('$CHY_ROOT') or before.endswith('$CHY_PREFIX')
-                or before.endswith('{CHY_ROOT}')
-                or before.endswith('{CHY_PREFIX}')):
-            refuse('literal /usr-rooted path survives in the build script')
+    # Single-quoted spans are exempt (shell path semantics suppressed).
+    for bline in build.splitlines():
+        spans = _squoted_spans(bline)
+        for m in re.finditer(r'/usr(?=[/\s"\':=]|$)', bline):
+            if any(a <= m.start() < b for a, b in spans):
+                continue
+            before = bline[:m.start()]
+            if before.endswith('"'):
+                before = before[:-1]
+            if not (before.endswith('$CHY_ROOT') or before.endswith('$CHY_PREFIX')
+                    or before.endswith('{CHY_ROOT}')
+                    or before.endswith('{CHY_PREFIX}')):
+                refuse('literal /usr-rooted path survives in the build script')
     # exactly one emitter-supplied prefix on configure-carrying styles
     if style in ('gnu-configure', 'configure', 'meson'):
         n = build.count('--prefix=')
