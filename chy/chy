@@ -6,12 +6,15 @@
 # install walks depends+makedepends, checks conflicts, and builds in the
 # unique smallest valid order. Sources are fetched and verified, built
 # into store/<name>-<version>/, linked into the usr/ symlink farm, and
-# recorded under db/installed/. After linking, runtime verification runs
-# ldd over the new ELFs and warns about unresolved libraries. doctor
-# re-runs that scan over every installed package and audits manifests
-# for broken, missing, or foreign farm links.
+# recorded under db/installed/. After the db write, runtime verification
+# runs ldd over the new ELFs and warns about unresolved libraries.
+# doctor re-runs that scan over every installed package and audits
+# manifests for broken, missing, or foreign farm links. outdated reports
+# drift from the recipes, why explains installs from the db, and upgrade
+# reinstalls drifted packages, rebuilding the dependents of any soname a
+# reinstall dropped.
 
-CHY_VERSION=0.3.0
+CHY_VERSION=0.4.0
 set -u
 
 CR=$(printf '\r') # to strip from lines of hand-edited (DOS) recipe files
@@ -32,9 +35,13 @@ chy $CHY_VERSION - a tiny package manager for hand-built Linux systems
 usage:
   chy install [--no-deps] name...
                         resolve, fetch, verify, build, and link packages
+  chy upgrade [name...] reinstall outdated packages; a soname bump also
+                        rebuilds the installed dependents
   chy remove [-r] name...
                         unlink and delete packages; -r cascades orphans
   chy list [name...]    list installed packages
+  chy outdated          report installed packages whose recipe moved
+  chy why name...       explain why a package is installed
   chy provided          list host-provided package names
   chy doctor            report unresolved libraries and manifest drift
   chy version           print chy's version
@@ -139,6 +146,13 @@ provided_names() { # db/provided names: sorted, de-duplicated
     list_names "$CHY_ROOT/db/provided" | LC_ALL=C sort -u
 }
 
+installed_names() { # entries under db/installed, byte-sorted
+    for il_d in "$CHY_ROOT/db/installed/"*; do    # a dir here means installed
+        [ -d "$il_d" ] || continue
+        printf '%s\n' "${il_d##*/}"
+    done | LC_ALL=C sort
+}
+
 # recipes
 # Validate recipes/<name>/ and set R_DIR, R_VER, R_REV. Any invalidity
 # fails the install before any fetching begins.
@@ -194,6 +208,18 @@ recipe_check() { # recipe_check <name>
     )
     [ -z "$rc_dup" ] ||
         fail "$1" "duplicate source filename: $(printf '%s\n' "$rc_dup" | head -n 1)"
+}
+
+# recipe_check's version parse without the validation, for the read
+# verbs: the first line, "<version>" or "<version> <revision>",
+# CR-stripped, into VQ_VER and VQ_REV. Unreadable tokens stay empty;
+# no revision default here (a db version always has both tokens,
+# so only recipe readers default theirs).
+read_version() { # read_version <file>
+    VQ_VER='' VQ_REV=''
+    [ -f "$1" ] || return 0
+    read -r VQ_VER VQ_REV <"$1" || :
+    VQ_VER=${VQ_VER%"$CR"} VQ_REV=${VQ_REV%"$CR"}
 }
 
 # fetch
@@ -501,9 +527,47 @@ relink_prev() { # re-link the previous install's paths this install clobbered
     done <"$rp_m"
 }
 
+# The soname set of a path list: basenames exactly
+# one component under usr/lib/ or lib/ matching *.so or *.so.*,
+# de-duplicated, minus every name that a different *.so.* name in the
+# set plus "." prefixes, so the real file libz.so.1.2.3 falls away in
+# favour of the soname link libz.so.1 that backs it. Symlinks count
+# like files: the loader resolves a NEEDED string by name in the farm.
+soname_set() { # stdin: paths, one per line; stdout: the set, byte-sorted
+    LC_ALL=C awk '
+        {
+            b = $0
+            if (sub(/^usr\/lib\//, "", b) == 0 && sub(/^lib\//, "", b) == 0)
+                next
+            if (index(b, "/") != 0) next
+            if (b !~ /\.so$/ && b !~ /\.so\./) next
+            set[b] = 1
+        }
+        END {
+            for (b in set) {
+                drop = 0
+                for (t in set)
+                    if (t != b && t ~ /\.so\./ && index(b, t ".") == 1)
+                        drop = 1
+                if (!drop) print b
+            }
+        }
+    ' | LC_ALL=C sort
+}
+
 retire_prev() { # retire_prev <name> <prev version>: drop stale links, old store, old db
     rp_m=$CHY_ROOT/db/installed/$1/manifest
     if [ -f "$rp_m" ]; then
+        # A soname the old manifest served that the new file list does
+        # not is a bump. Warn on every reinstall;
+        # record the name so cmd_upgrade rebuilds the dependents.
+        soname_set <"$rp_m" >"$CHY_ROOT/build/sos-old"
+        soname_set <"$LIST" >"$CHY_ROOT/build/sos-new"
+        LC_ALL=C comm -23 "$CHY_ROOT/build/sos-old" "$CHY_ROOT/build/sos-new" |
+            while IFS= read -r rp_s; do
+                warn "$1" "soname bump: $rp_s"
+                printf '%s\n' "$1" >>"$CHY_ROOT/build/bumped"
+            done
         LC_ALL=C awk 'NR == FNR { keep[$0] = 1; next } !($0 in keep)' \
             "$LIST" "$rp_m" | while IFS= read -r rp_p || [ -n "$rp_p" ]; do
             [ -n "$rp_p" ] || continue
@@ -517,10 +581,11 @@ retire_prev() { # retire_prev <name> <prev version>: drop stale links, old store
     rm -rf "$CHY_ROOT/db/installed/$1"
 }
 
-# The db entry is written last; its presence means "installed".
-# depends/conflicts are verbatim recipe copies. The empty requested
-# marker means "named on the command line"; dependency installs never
-# carry it.
+# The db entry is written once the farm links land (pipeline step 11),
+# before the advisory verify. its presence is what "installed" means.
+# depends and conflicts are copied verbatim from the recipe. the empty
+# requested marker means "named on the command line"; dependency
+# installs never carry it, and upgrade keeps whatever it found.
 write_db() { # write_db <name> <requested: 1|0>
     wd_db=$CHY_ROOT/db/installed/$1
     rm -rf "$wd_db"
@@ -587,7 +652,8 @@ scan_needs() { # scan_needs <store entry dir>
         done
 }
 
-# Step 11: after linking, before the db write. Warnings only; they
+# Step 12: after the db write, so a kill during the long ldd pass can
+# no longer leave a placed-but-unrecorded package. Warnings only; they
 # never affect exit and never undo the install. The files stay placed
 # and linked.
 verify_runtime() { # verify_runtime <name>
@@ -710,8 +776,8 @@ do_install() { # do_install <name> <requested: 1|0>
     fi
     [ -z "$di_prevver" ] || retire_prev "$1" "$di_prevver" # 7, now safe
 
-    verify_runtime "$1"                             # 11: warnings only
-    write_db "$1" "$2"                              # 12
+    write_db "$1" "$2"                              # 11: presence = installed
+    verify_runtime "$1"                             # 12: warnings only
     say "$1" "installed $R_VER $R_REV"
 }
 
@@ -1064,10 +1130,86 @@ cmd_list() {
     exit "$cl_bad"
 }
 
+# outdated
+# The predicate: a package's db "<version> <revision>" is not
+# byte-equal to its recipe's, the recipe revision defaulting to 1.
+# Version files only, never full recipe_check: one broken recipe must
+# not sink a whole report. Sets OD_IV OD_IR OD_RV OD_RR, raw tokens,
+# empty when unreadable.
+version_drift() { # version_drift <name>: true when db and recipe differ
+    read_version "$CHY_ROOT/db/installed/$1/version"
+    OD_IV=$VQ_VER OD_IR=$VQ_REV
+    read_version "$CHY_ROOT/recipes/$1/version"
+    OD_RV=$VQ_VER OD_RR=$VQ_REV
+    [ -n "$OD_RR" ] || OD_RR=1
+    [ "$OD_IV $OD_IR" != "$OD_RV $OD_RR" ]
+}
+
+# Walk installed packages in name order: a provided or recipe-gone one
+# is skipped with its warning, each drifted one prints the report
+# line, unreadable tokens as "-". cmd_upgrade reads this walk for its
+# no-name target set.
+outdated_walk() {
+    installed_names | while IFS= read -r od_n; do
+        if in_set "$od_n" "$PROVIDED"; then
+            warn "$od_n" 'provided by the host'
+        elif [ ! -d "$CHY_ROOT/recipes/$od_n" ]; then
+            warn "$od_n" 'no recipe'
+        elif version_drift "$od_n"; then
+            printf '%s %s %s -> %s %s\n' "$od_n" \
+                "${OD_IV:--}" "${OD_IR:--}" "${OD_RV:--}" "${OD_RR:--}"
+        fi
+    done
+}
+
+cmd_outdated() { # read-only, like doctor; a report, so exit 0 always
+    [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+    PROVIDED=" $(provided_names | tr '\n' ' ')"
+    outdated_walk
+    exit 0
+}
+
+# why: explain each named package from the db alone. Names
+# are processed like list, all of them in order. requested and
+# required-by both print when both hold, requested first.
+cmd_why() {
+    [ "$#" -gt 0 ] || { usage >&2; exit 2; }
+    for cw_n in "$@"; do
+        case $cw_n in -*) usage >&2; exit 2 ;; esac
+    done
+    cw_bad=0
+    for cw_n in "$@"; do
+        if ! valid_name "$cw_n"; then
+            err "$cw_n" "invalid package name"
+            cw_bad=1
+            continue
+        fi
+        if [ ! -d "$CHY_ROOT/db/installed/$cw_n" ]; then
+            err "$cw_n" "not installed"
+            cw_bad=1
+            continue
+        fi
+        cw_why=0
+        if [ -f "$CHY_ROOT/db/installed/$cw_n/requested" ]; then
+            say "$cw_n" 'requested'
+            cw_why=1
+        fi
+        cw_by=$(requirers_of "$cw_n" ' ')
+        cw_by=${cw_by% }
+        if [ -n "$cw_by" ]; then
+            say "$cw_n" "required by: $cw_by"
+            cw_why=1
+        fi
+        [ "$cw_why" -eq 1 ] ||
+            say "$cw_n" 'orphan (not requested, nothing requires it)'
+    done
+    exit "$cw_bad"
+}
+
 # doctor
 # Read-only: creates no directories, absent ones are empty.
 # Per installed package in name order, three checks emit in order, at
-# most one finding per manifest path: (1) the step-11 ELF scan over the
+# most one finding per manifest path: (1) the step-12 ELF scan over the
 # store entry, (2) owned farm symlinks whose target does not resolve,
 # (3) manifest drift, i.e. absent by lstat, or present but not our own
 # symlink. Checks 2 and 3 walk the manifest in stored order.
@@ -1126,6 +1268,194 @@ cmd_doctor() {
     exit 1
 }
 
+# upgrade
+# Reinstall drifted packages. The target set resolves and
+# installs exactly as cmd_install; each package keeps the requested
+# marker it had, snapshotted up front because retire_prev drops the db
+# entry mid-run. A reinstall that lost a soname left its name in
+# build/bumped; the installed dependents of every bumped package are
+# then rebuilt so nothing keeps NEEDing a name the farm dropped.
+
+# Resumability: a package left needing a soname the farm now
+# carries at a different version (a same-stem sibling under usr/lib)
+# was stranded by an interrupted bump rebuild; reinstalling relinks it
+# clean. A need with no provider at all is host drift, doctor's to
+# report, never rebuilt here.
+needs_relink() { # needs_relink <store entry dir>
+    nr_miss=$(scan_needs "$1")
+    [ -n "$nr_miss" ] || return 1
+    while IFS= read -r nr_l; do
+        nr_s=$(first_field "$nr_l")     # scan lines may carry the map hint
+        nr_stem=${nr_s%.so*}            # the name up to its last ".so"
+        [ "$nr_stem" != "$nr_s" ] || continue
+        for nr_c in "$CHY_ROOT/usr/lib/$nr_stem.so" \
+                    "$CHY_ROOT/usr/lib/$nr_stem.so".*; do
+            [ -e "$nr_c" ] || continue # dangling names provide nothing
+            [ "${nr_c##*/}" = "$nr_s" ] || return 0
+        done
+    done <<EOF
+$nr_miss
+EOF
+    return 1
+}
+
+# The ABI rebuild set: installed dependents of every bumped package,
+# transitive over db-recorded depends (the remove guard's relation,
+# makedepends never), minus everything already built this run. Printed
+# in order over set-internal recorded edges; exit 3 carries a cycle.
+rebuild_set() { # rebuild_set <bumped-set> <done-set>
+    rb_seen=$1 rb_new=' '
+    rb_q=${1# }
+    while [ -n "$rb_q" ]; do
+        case $rb_q in
+            *' '*) rb_c=${rb_q%% *} rb_q=${rb_q#* } ;;
+            *)     rb_c=$rb_q rb_q= ;;
+        esac
+        [ -n "$rb_c" ] || continue
+        rb_r=$(requirers_of "$rb_c" ' ')
+        while [ -n "$rb_r" ]; do
+            rb_d=${rb_r%% *} rb_r=${rb_r#* }
+            [ -n "$rb_d" ] || continue
+            in_set "$rb_d" "$rb_seen" && continue
+            rb_seen="$rb_seen$rb_d "
+            rb_q="$rb_q${rb_q:+ }$rb_d"    # walk through excluded ones too
+            in_set "$rb_d" "$2" && continue
+            if in_set "$rb_d" "$PROVIDED"; then     # unbuildable dependents:
+                warn "$rb_d" 'provided by the host'
+            elif [ ! -d "$CHY_ROOT/recipes/$rb_d" ]; then
+                warn "$rb_d" 'no recipe'            # doctor will name the
+            else                                    # soname they still need
+                rb_new="$rb_new$rb_d "
+            fi
+        done
+    done
+    [ "$rb_new" != ' ' ] || return 0
+
+    RES=$CHY_ROOT/build/resolve
+    rm -rf "$RES"; mkdir -p "$RES"
+    : >"$RES/needed"; : >"$RES/edges"
+    rb_q=${rb_new# }
+    while [ -n "$rb_q" ]; do
+        case $rb_q in
+            *' '*) rb_c=${rb_q%% *} rb_q=${rb_q#* } ;;
+            *)     rb_c=$rb_q rb_q= ;;
+        esac
+        [ -n "$rb_c" ] || continue
+        printf '%s\n' "$rb_c" >>"$RES/needed"
+        list_names "$CHY_ROOT/db/installed/$rb_c/depends" >"$RES/deps"
+        while IFS= read -r rb_d <&3; do
+            ! in_set "$rb_d" "$rb_new" ||
+                printf '%s %s\n' "$rb_c" "$rb_d" >>"$RES/edges"
+        done 3<"$RES/deps"
+    done
+    order_awk install
+}
+
+# Install every name of an ordered list, upgrade-style: the requested
+# flag comes from the CU_MARK snapshot, and the bump record an install
+# may leave is folded into CU_BUMP before the next build wipes it.
+upgrade_run() { # upgrade_run <ordered names>
+    REST=$1
+    while pop; do
+        ur_req=0
+        in_set "$POP" "$CU_MARK" && ur_req=1
+        do_install "$POP" "$ur_req"
+        CU_DONE="$CU_DONE$POP "
+        [ -f "$CHY_ROOT/build/bumped" ] || continue
+        while IFS= read -r ur_b || [ -n "$ur_b" ]; do
+            [ -n "$ur_b" ] || continue
+            in_set "$ur_b" "$CU_BUMP" || CU_BUMP="$CU_BUMP$ur_b "
+        done <"$CHY_ROOT/build/bumped"
+        rm -f "$CHY_ROOT/build/bumped"
+    done
+}
+
+cmd_upgrade() {
+    for cu_n in "$@"; do
+        case $cu_n in -*) usage >&2; exit 2 ;; esac
+    done
+    PROVIDED=" $(provided_names | tr '\n' ' ')"
+
+    CU_T=' ' cu_names=''
+    if [ "$#" -eq 0 ]; then
+        cu_out=$(outdated_walk) # every outdated package
+        while IFS= read -r cu_l; do
+            [ -n "$cu_l" ] || continue
+            cu_n=$(first_field "$cu_l")
+            CU_T="$CU_T$cu_n " cu_names="${cu_names:+$cu_names }$cu_n"
+        done <<EOF
+$cu_out
+EOF
+    else
+        for cu_n in "$@"; do        # cascade discipline: every name is
+            valid_name "$cu_n" || fail "$cu_n" "invalid package name"
+            [ -d "$CHY_ROOT/db/installed/$cu_n" ] || fail "$cu_n" "not installed"
+            [ -d "$CHY_ROOT/recipes/$cu_n" ] || fail "$cu_n" "no recipe"
+        done                        # checked before anything is touched
+        for cu_n in "$@"; do
+            in_set "$cu_n" "$CU_T" && continue
+            version_drift "$cu_n" || continue   # current: skipped silently
+            CU_T="$CU_T$cu_n " cu_names="${cu_names:+$cu_names }$cu_n"
+        done
+    fi
+
+    # Fold in packages a past interrupted run left dangling. Skipped
+    # without ldd, which the scan needs; installs still verify (and
+    # warn) on their own.
+    if command -v ldd >/dev/null 2>&1; then
+        cu_rep=$(installed_names | while IFS= read -r cu_n; do
+            in_set "$cu_n" "$CU_T" && continue
+            in_set "$cu_n" "$PROVIDED" && continue
+            [ -d "$CHY_ROOT/recipes/$cu_n" ] || continue
+            read_version "$CHY_ROOT/db/installed/$cu_n/version"
+            [ -n "$VQ_VER" ] || continue
+            if needs_relink "$CHY_ROOT/store/$cu_n-$VQ_VER"; then
+                printf '%s\n' "$cu_n"
+            fi
+        done)
+        while IFS= read -r cu_n; do
+            [ -n "$cu_n" ] || continue
+            CU_T="$CU_T$cu_n " cu_names="${cu_names:+$cu_names }$cu_n"
+        done <<EOF
+$cu_rep
+EOF
+    fi
+
+    [ -n "$cu_names" ] || exit 0    # nothing drifted: print nothing
+
+    CU_MARK=' ' REST=$cu_names      # snapshot the requested markers now;
+    while pop; do                   # retire_prev eats the db mid-run
+        [ ! -f "$CHY_ROOT/db/installed/$POP/requested" ] ||
+            CU_MARK="$CU_MARK$POP "
+    done
+
+    REQUESTED=$CU_T                 # resolver blame stays install-scoped
+    resolve "$cu_names"
+    printf 'chy: order: %s\n' "$ORDER"
+    CU_DONE=' ' CU_BUMP=' '
+    upgrade_run "$ORDER"
+
+    cu_said=0                       # the ABI rebuild rounds: dependents
+    while :; do                     # of every bump, at most once each
+        cu_batch=$(rebuild_set "$CU_BUMP" "$CU_DONE") || case $? in
+            3) fail install "dependency cycle: $cu_batch" ;;
+            *) fail install 'cannot order the rebuild set' ;;
+        esac
+        [ -n "$cu_batch" ] || break
+        if [ "$cu_said" -eq 0 ]; then
+            printf 'chy: rebuild: %s\n' "$cu_batch"
+            cu_said=1
+        fi
+        REST=$cu_batch              # markers, same snapshot rule
+        while pop; do
+            [ ! -f "$CHY_ROOT/db/installed/$POP/requested" ] ||
+                CU_MARK="$CU_MARK$POP "
+        done
+        upgrade_run "$cu_batch"
+    done
+    exit 0
+}
+
 # dispatch
 check_root
 
@@ -1134,8 +1464,11 @@ case ${1-} in
                   printf '%s\n' "$CHY_VERSION" ;;
     ''|-h|--help) usage ;;
     install)      shift; cmd_install "$@" ;;
+    upgrade)      shift; cmd_upgrade "$@" ;;
     remove)       shift; cmd_remove "$@" ;;
     list)         shift; cmd_list "$@" ;;
+    outdated)     shift; cmd_outdated "$@" ;;
+    why)          shift; cmd_why "$@" ;;
     provided)     shift; cmd_provided "$@" ;;
     doctor)       shift; cmd_doctor "$@" ;;
     *)            usage >&2; exit 2 ;;
