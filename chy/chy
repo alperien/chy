@@ -3,16 +3,10 @@
 #
 # One POSIX sh file. All state is on the filesystem under $CHY_ROOT.
 #
-# install walks depends+makedepends, checks conflicts, and builds in the
-# unique smallest valid order. Sources are fetched and verified, built
-# into store/<name>-<version>/, linked into the usr/ symlink farm, and
-# recorded under db/installed/. After the db write, runtime verification
-# runs ldd over the new ELFs and warns about unresolved libraries.
-# doctor re-runs that scan over every installed package and audits
-# manifests for broken, missing, or foreign farm links. outdated reports
-# drift from the recipes, why explains installs from the db, and upgrade
-# reinstalls drifted packages, rebuilding the dependents of any soname a
-# reinstall dropped.
+# install builds a package into store/<name>-<version>/, links it into
+# the usr/ symlink farm, and records it under db/installed/. upgrade,
+# remove, list, outdated, why, and doctor all work from that on-disk
+# state. usage() lists the verbs.
 
 CHY_VERSION=0.4.0
 set -u
@@ -598,14 +592,10 @@ write_db() { # write_db <name> <requested: 1|0>
 }
 
 # runtime verification
-# The ELF scan. Every lstat-regular
-# file under $1 whose first four bytes are the ELF magic goes through
-# ldd once, with $CHY_ROOT/usr/lib prepended to LD_LIBRARY_PATH so
-# verification sees what a launched program would. A missing library is
-# a line whose fields 2-4 are literally "=> not found" (field 1 is the
-# soname); ldd's exit status and everything else it prints are ignored.
-# Output: distinct missing sonames, one per line, byte-sorted, each with
-# shlib_hint appended.
+# The ELF scan. Each ELF under $1 is
+# run through ldd with $CHY_ROOT/usr/lib on LD_LIBRARY_PATH, so it sees
+# what a launched program would. Output: the distinct unresolved sonames
+# (ldd's "=> not found"), byte-sorted, each with shlib_hint appended.
 
 ELF_MAGIC=$(printf '\177ELF')
 
@@ -618,13 +608,10 @@ shlib_hint() { # " (package: <pkg>)" when shlibs.map knows the soname
 
 scan_needs() { # scan_needs <store entry dir>
     [ -d "$1" ] || return 0
-    # Skip sonames the package ships itself: those resolve at runtime
-    # via the launcher convention or a source ELF's own farm rpath
-    # ($ORIGIN for vendor trees), so a library cross-referencing its
-    # siblings is not a missing dependency.
-    # -L, -type f: a self-shipped soname counts only if it resolves to a
-    # real file. A dangling symlink satisfies nothing, so it must not
-    # suppress a genuine "not found".
+    # Skip sonames the package ships itself (they resolve at runtime via
+    # the launcher or a source ELF's own rpath). -L -type f: only a
+    # soname resolving to a real file counts; a dangling symlink provides
+    # nothing and shouldn't hide a real "not found".
     sn_own=$(find -L "$1" -type f -name '*.so*' 2>/dev/null |
         while IFS= read -r sn_o; do printf '%s\n' "${sn_o##*/}"; done |
         LC_ALL=C sort -u)
@@ -652,10 +639,9 @@ scan_needs() { # scan_needs <store entry dir>
         done
 }
 
-# Step 12: after the db write, so a kill during the long ldd pass can
-# no longer leave a placed-but-unrecorded package. Warnings only; they
-# never affect exit and never undo the install. The files stay placed
-# and linked.
+# Step 12: after the db write, so a kill during the long ldd pass can't
+# leave a placed-but-unrecorded package. Warnings only, they never affect
+# exit or undo the install.
 verify_runtime() { # verify_runtime <name>
     if ! command -v ldd >/dev/null 2>&1; then
         warn "$1" 'ldd unavailable; runtime verification skipped'
@@ -782,14 +768,11 @@ do_install() { # do_install <name> <requested: 1|0>
 }
 
 # resolver
-# install resolution, steps 2-5. Scratch lives in build/resolve;
-# resolution completes before any pipeline step wipes build/.
-#
-# Step 2 builds the needed set: walk depends+makedepends transitively
-# from the requested names. A walked dependency that is installed or
-# provided is satisfied (joins nothing, its subtree not entered).
-# Requested names never count as satisfied. Step 3: every needed name
-# must have a recipe.
+# install resolution, steps 2-5, in build/resolve (finished
+# before any pipeline step wipes build/). Step 2 walks depends+makedepends
+# from the requested names; a dependency already installed or provided is
+# satisfied and its subtree skipped, but a requested name never is.
+# Step 3: every needed name must have a recipe.
 resolve() { # resolve <space-separated requested names>; sets ORDER
     RES=$CHY_ROOT/build/resolve
     rm -rf "$RES"; mkdir -p "$RES"
@@ -838,13 +821,11 @@ resolve() { # resolve <space-separated requested names>; sets ORDER
     esac
 }
 
-# Step 4, three checks: a needed package's recipe conflicts with an
-# installed one; an installed package's db-recorded conflicts with a
-# needed one; a needed package's recipe conflicts with another needed
-# one. Every violating pair prints one line, <name> being the needed
-# package, pairs sorted by <name> then <other>. When both wordings apply
-# the installed one wins ("installed" < "needed" in byte order does that
-# for free).
+# Step 4 conflict checks: a needed recipe vs an installed
+# package, an installed db-conflicts vs a needed one, and two needed
+# recipes. One line per violating pair, sorted by name then other; a dual
+# match takes the "installed" wording, since "installed" < "needed" in
+# byte order.
 resolve_conflicts() {
     : >"$RES/pairs"
     while IFS= read -r rc_n <&3; do
@@ -1207,12 +1188,10 @@ cmd_why() {
 }
 
 # doctor
-# Read-only: creates no directories, absent ones are empty.
-# Per installed package in name order, three checks emit in order, at
-# most one finding per manifest path: (1) the step-12 ELF scan over the
-# store entry, (2) owned farm symlinks whose target does not resolve,
-# (3) manifest drift, i.e. absent by lstat, or present but not our own
-# symlink. Checks 2 and 3 walk the manifest in stored order.
+# Read-only: creates no directories. Per installed package, in
+# name order, three checks emit in stored manifest order: (1) the step-12
+# ELF scan, (2) broken owned farm links, (3) manifest drift (missing, or
+# present but not our own symlink).
 doctor_scan() {
     dsc_ldd=1
     if ! command -v ldd >/dev/null 2>&1; then
