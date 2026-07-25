@@ -1,0 +1,5 @@
+origin: translated
+template: srcpkgs/fresh/template
+void-commit: 1234567890abcdef1234567890abcdef12345678
+pkgver: fresh-1.9_1
+style: gnu-configure

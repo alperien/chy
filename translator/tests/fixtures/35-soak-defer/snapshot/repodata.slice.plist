@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>aged</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>aged-1.0_1</string>
+		<key>source-revisions</key>
+		<string>aged:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>fresh</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>fresh-2.0_1</string>
+		<key>source-revisions</key>
+		<string>fresh:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>young</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>young-3.0_1</string>
+		<key>source-revisions</key>
+		<string>young:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+</dict>
+</plist>

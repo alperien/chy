@@ -1,0 +1,7 @@
+#!/bin/sh -e
+# prior corpus recipe (1.9); a regenerating run would replace these bytes
+./configure \
+    --prefix="$CHY_PREFIX" \
+    --sysconfdir="$CHY_ROOT/etc"
+make
+make DESTDIR="$1" install

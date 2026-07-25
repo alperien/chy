@@ -1,0 +1,7 @@
+exit :: 0
+file-line :: report :: translated: aged
+file-line :: report :: deferred: fresh fresh-2.0_1 age=2
+file-line :: report :: deferred: young young-3.0_1 age=0
+file-count :: report :: deferred: :: 2
+exists :: recipes/aged/build
+absent :: recipes/young

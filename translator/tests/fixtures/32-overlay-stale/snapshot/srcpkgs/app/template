@@ -1,0 +1,11 @@
+# Template file for 'app'
+pkgname=app
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/app"
+distfiles="https://example.org/dist/app-${version}.tar.gz"
+checksum=d099a1996b84a22aca2b0fc8520937c9d9ab74912fc0bd3586a0f8817a896725

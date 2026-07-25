@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 # translator/tests/run: black-box fixture runner for chytrans.
 #
-# Black box: the only surface exercised is the public one:
+# Black box: the only surfaces exercised are the public ones:
 #
 #     python3 translator/chytrans translate --snapshot DIR --out DIR NAME...
+#     python3 translator/chytrans overlay-check --snapshot DIR --overlay DIR
 #
-# Fixture convention is documented in translator/tests/README.md. This
-# runner never inspects the translator's internals: it runs the CLI on a
-# committed synthetic snapshot and holds the output tree to expectations
-# derived from committed expectations.
+# A case holding an overlay/ directory runs overlay-check;
+# every other case runs translate. This runner never inspects the translator's
+# internals: it runs the CLI on a committed synthetic snapshot and holds
+# the output to committed expectations.
 #
 # Per case, always:
 #   - the translator runs TWICE into two fresh output roots (each seeded
-#     from pre/ when present); the two trees must be byte-identical
-#     (same snapshot in, byte-identical out)
-# - universal invariants are asserted: report, shlibs.map,
-#     provided.suggested exist; TRANSLATOR_VERSION exists non-empty;
-#     no recipe meta carries a "translator:" line; every recipe whose meta
-#     says "origin: translated" is a valid recipe shape
+#     from pre/ when present); the two trees, exit codes and stdout must
+#     be identical (same snapshot in, byte-identical out)
+#   - universal invariants (translate cases only): report, shlibs.map,
+#     provided.suggested exist; TRANSLATOR_VERSION exists non-empty; no
+#     recipe meta carries a "translator:" line; every recipe whose meta
+#     says "origin: translated" has a valid recipe shape
 #     (version/sources/checksums/build present, checksums pair with
 #     sources by significant-line count and are lowercase sha256 hex)
 #   - expect/ files (if any) must match the output byte-for-byte
@@ -117,6 +118,16 @@ def d_stderr_matches(ctx, rx):
         raise CheckFail("no stderr line matches /%s/" % rx)
 
 
+def d_stdout_line(ctx, line):
+    if line not in ctx.stdout.splitlines():
+        raise CheckFail("stdout: missing exact line [%s]" % line)
+
+
+def d_stdout_matches(ctx, rx):
+    if not any(re.search(rx, ln) for ln in ctx.stdout.splitlines()):
+        raise CheckFail("no stdout line matches /%s/" % rx)
+
+
 def d_exists(ctx, rel):
     if not os.path.exists(os.path.join(ctx.out, rel)):
         raise CheckFail("expected to exist: %s" % rel)
@@ -195,6 +206,8 @@ DIRECTIVES = {
     "exit": (d_exit, 1, 1),
     "stderr-refusal": (d_stderr_refusal, 1, 2),
     "stderr-matches": (d_stderr_matches, 1, 1),
+    "stdout-line": (d_stdout_line, 1, 1),
+    "stdout-matches": (d_stdout_matches, 1, 1),
     "exists": (d_exists, 1, 1),
     "absent": (d_absent, 1, 1),
     "file-line": (d_file_line, 2, 2),
@@ -311,6 +324,9 @@ def run_case(case_dir):
         names = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
     snap = os.path.join(case_dir, "snapshot")
     pre = os.path.join(case_dir, "pre")
+    # an overlay/ directory switches the case to the overlay-check surface
+    overlay = os.path.join(case_dir, "overlay")
+    overlay_mode = os.path.isdir(overlay)
 
     with tempfile.TemporaryDirectory(prefix="chytrans-test.") as td:
         results = []
@@ -319,13 +335,17 @@ def run_case(case_dir):
             os.makedirs(out)
             if os.path.isdir(pre):
                 copy_pre(pre, out)
-            cmd = [sys.executable, CHYTRANS, "translate",
-                   "--snapshot", snap, "--out", out] + names
+            if overlay_mode:
+                cmd = [sys.executable, CHYTRANS, "overlay-check",
+                       "--snapshot", snap, "--overlay", overlay]
+            else:
+                cmd = [sys.executable, CHYTRANS, "translate",
+                       "--snapshot", snap, "--out", out] + names
             try:
                 proc = subprocess.run(cmd, cwd=td, stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE, timeout=180)
             except subprocess.TimeoutExpired:
-                return ["translate run %d timed out (180s)" % i], ""
+                return ["chytrans run %d timed out (180s)" % i], ""
             results.append((out, proc))
 
         (out1, p1), (out2, p2) = results
@@ -343,8 +363,11 @@ def run_case(case_dir):
         if p1.returncode != p2.returncode:
             fails.append("determinism: exit codes differ (%d vs %d)"
                          % (p1.returncode, p2.returncode))
+        if p1.stdout != p2.stdout:
+            fails.append("determinism: stdout differs between reruns")
 
-        universal(ctx, fails)
+        if not overlay_mode:
+            universal(ctx, fails)
         expect_dir = os.path.join(case_dir, "expect")
         if os.path.isdir(expect_dir):
             check_expect(ctx, expect_dir, fails)

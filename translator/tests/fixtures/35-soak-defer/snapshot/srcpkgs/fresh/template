@@ -1,0 +1,11 @@
+# Template file for 'fresh'
+pkgname=fresh
+version=2.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/fresh"
+distfiles="https://example.org/dist/fresh-${version}.tar.gz"
+checksum=b02a648d2d9584de92925a097e166532f370191b1a3be974e5065d01a4e9c302

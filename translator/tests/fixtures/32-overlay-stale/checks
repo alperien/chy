@@ -1,0 +1,3 @@
+exit :: 1
+stdout-line :: overlay: app: STALE: base deadbeefcafefeedfacedeadbeefcafefeedface, upstream now 1234567890abcdef1234567890abcdef12345678
+stderr-matches :: ^chytrans: app: stale-overlay: base deadbeefcafefeedfacedeadbeefcafefeedface

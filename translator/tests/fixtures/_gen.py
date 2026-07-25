@@ -4,9 +4,10 @@
     python3 translator/tests/fixtures/_gen.py
 
 Deterministic: same bytes on every run. Each case_* function builds one
-fixture directory (snapshot/ + names + checks [+ expect/ + pre/]) whose
-expected outputs are written by hand. The runner (translator/tests/run) does not import
-this file; the generated trees are committed and are the tests.
+fixture directory (snapshot/ + names + checks [+ expect/ + pre/ +
+overlay/]) whose expected outputs are written by hand. The runner (translator/tests/run)
+does not import this file; the generated trees are committed and are the
+tests.
 
 The generator ends with a verification pass over what it wrote (plist
 round-trips, checks-file lint, sorted expectations actually sorted,
@@ -154,6 +155,11 @@ class Case:
 
     def pre(self, rel, text):
         self.write(os.path.join("pre", rel), text)
+
+    def overlay(self, pkg, rel, text):
+        # an overlay recipe directory; its presence switches the
+        # runner to the overlay-check surface.
+        self.write(os.path.join("overlay", pkg, rel), text)
 
     def finish(self):
         if not self._have_shlibs:
@@ -991,10 +997,141 @@ def case_33():
     c.finish()
 
 
+# overlay-staleness cases
+
+# 40-hex, sharing no prefix with COMMIT in either direction.
+OLD_BASE = "deadbeefcafefeedfacedeadbeefcafefeedface"
+
+
+def case_32_overlay_stale():
+    # an overlay whose overlay-base lags the slice's current
+    # source-revisions commit is STALE: the exact report line, a stderr
+    # alarm in the pinned grammar, exit 1.
+    c = Case("32-overlay-stale")
+    c.names("app")
+    c.template("app", tmpl("app"))
+    c.slice(E("app"))
+    c.overlay("app", "meta",
+              "origin: overlay\noverlay-base: %s\n" % OLD_BASE)
+    c.checks(
+        "exit :: 1\n"
+        "stdout-line :: overlay: app: STALE: base %s, upstream now %s\n"
+        % (OLD_BASE, COMMIT) +
+        "stderr-matches :: ^chytrans: app: stale-overlay: base %s\n"
+        % OLD_BASE
+    )
+    c.finish()
+
+
+def case_33_overlay_current():
+    # commit comparison is prefix-tolerant (live source-revisions
+    # commits are abbreviated), so a 12-hex overlay-base matches its
+    # 40-hex upstream; an overlay shadowing nothing in the snapshot is
+    # the informational 'local' line.  No alarm, exit 0.
+    c = Case("33-overlay-current")
+    c.names("app")
+    c.template("app", tmpl("app"))
+    c.slice(E("app"))
+    c.overlay("app", "meta",
+              "origin: overlay\noverlay-base: %s\n" % COMMIT[:12])
+    c.overlay("locpkg", "meta", "origin: overlay\n")
+    c.checks(
+        "exit :: 0\n"
+        "stdout-line :: overlay: app: current (base %s)\n" % COMMIT[:12] +
+        "stdout-line :: overlay: locpkg: local (no upstream in snapshot)\n"
+    )
+    c.finish()
+
+
+# kill-switch cases
+
+# 40-hex, distinct from COMMIT (the slice's source-revisions commit).
+PIN = "fedcba9876543210fedcba9876543210fedcba98"
+
+
+def case_34_pin_meta():
+    # a snapshot carrying snapshot/pin translates with void-commit:
+    # = the pin, not the package's source-revisions commit, and the run
+    # ledger records the pin.
+    c = Case("34-pin-meta")
+    c.names("app")
+    c.template("app", tmpl("app"))
+    c.slice(E("app"))
+    c.write("snapshot/pin", PIN + "\n")
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: recipes/app/meta :: void-commit: %s\n" % PIN +
+        "file-not-has :: recipes/app/meta :: %s\n" % COMMIT +
+        "file-line :: report :: pin: %s\n" % PIN +
+        "file-line :: report :: translated: app\n"
+    )
+    c.finish()
+
+
+# soak-gate cases
+
+def case_35_soak_defer():
+    # snapshot/soak pins the verdict; translate stays offline.  A
+    # deferred package with a seeded prior recipe keeps it byte-identical
+    # (like a handwritten exception it is not regenerated); a deferred
+    # package with no prior recipe emits nothing; both earn a 'deferred:'
+    # report line and leave exit status untouched; a soaked package
+    # translates as always.
+    c = Case("35-soak-defer")
+    c.names("aged", "fresh", "young")
+    c.template("aged", tmpl("aged"))
+    c.template("fresh", tmpl("fresh", ver="2.0"))
+    c.template("young", tmpl("young", ver="3.0"))
+    c.slice(E("aged"), E("fresh", ver="2.0_1"), E("young", ver="3.0_1"))
+    # Epochs are server-supplied (mirror Last-Modified, commits-API
+    # committer date).  Ages resolve against the newest epoch recorded in
+    # the file (1704326400): fresh's newest clock is 2 days older, young
+    # (all doubt, both clocks 0) reports age=0.
+    c.write("snapshot/soak",
+            "aged aged-1.0_1 1704326400 1703980800 soaked\n"
+            "fresh fresh-2.0_1 1704067200 1704153600 deferred\n"
+            "young young-3.0_1 0 0 deferred\n")
+    prior = {
+        "meta": ("origin: translated\n"
+                 "template: srcpkgs/fresh/template\n"
+                 "void-commit: %s\n"
+                 "pkgver: fresh-1.9_1\n"
+                 "style: gnu-configure\n" % COMMIT),
+        "version": "1.9 1\n",
+        "sources": ("https://example.org/dist/fresh-1.9.tar.gz"
+                    " https://sources.voidlinux.org/fresh-1.9/"
+                    "fresh-1.9.tar.gz\n"),
+        "checksums": fake_sha("fresh-1.9.tar.gz") + "\n",
+        "build": ("#!/bin/sh -e\n"
+                  "# prior corpus recipe (1.9); a regenerating run would"
+                  " replace these bytes\n"
+                  './configure \\\n'
+                  '    --prefix="$CHY_PREFIX" \\\n'
+                  '    --sysconfdir="$CHY_ROOT/etc"\n'
+                  'make\n'
+                  'make DESTDIR="$1" install\n'),
+    }
+    for rel, text in prior.items():
+        c.pre("recipes/fresh/%s" % rel, text)
+        c.expect("recipes/fresh/%s" % rel, text)
+    c.expect("recipes/aged/version", "1.0 1\n")
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: report :: translated: aged\n"
+        "file-line :: report :: deferred: fresh fresh-2.0_1 age=2\n"
+        "file-line :: report :: deferred: young young-3.0_1 age=0\n"
+        "file-count :: report :: deferred: :: 2\n"
+        "exists :: recipes/aged/build\n"
+        "absent :: recipes/young\n"
+    )
+    c.finish()
+
+
 # verification
 
 DIRECTIVE_ARITY = {
     "exit": (1, 1), "stderr-refusal": (1, 2), "stderr-matches": (1, 1),
+    "stdout-line": (1, 1), "stdout-matches": (1, 1),
     "exists": (1, 1), "absent": (1, 1),
     "file-line": (2, 2), "file-has": (2, 2), "file-not-has": (2, 2),
     "file-matches": (2, 2), "file-first-line": (2, 2),
