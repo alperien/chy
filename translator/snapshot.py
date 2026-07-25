@@ -3,20 +3,28 @@
 create() is the only networked code in the translator: it fetches Void's
 x86_64-repodata, common/shlibs at the current master commit, and each
 requested package's srcpkgs/<name>/ tree at its pinned source-revisions
-commit (shallow, sparse, blob-filtered git fetch; docs/).
-load() is offline and is all the translate pipeline ever touches.
+commit (shallow, sparse, blob-filtered git fetch).
+The corpus-sync pieces live here too, all creation-side: the soak verdicts
+(snapshot/soak, from the mirror's HEAD timestamps and the commits-API
+committer date), the kill switch (translator/PIN -> snapshot/pin, one
+fetch at the pin), and the authenticated GitHub API. load() is
+offline and is all the translate pipeline ever touches.
 
 Python 3.9+, stdlib only; external tools: curl, zstd, tar, git, bash.
 """
 
+import datetime
+import email.utils
 import hashlib
 import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import xml.parsers.expat
 
 import repodata
@@ -51,13 +59,18 @@ class SnapshotError(Exception):
 class Snapshot:
     """An on-disk snapshot, loaded. .slice maps binary package name to
     its repodata entry; .shlibs is the common/shlibs text; .manifest is
-    the MANIFEST's lines."""
+    the MANIFEST's lines; .pin is the kill-switch commit (None when
+    the snapshot tracks tip); .soak maps package name to its verdict
+    row (pkgver, last-modified epoch, committer epoch, verdict), empty
+    when the snapshot predates the soak gate."""
 
-    def __init__(self, dir, slice, shlibs, manifest):
+    def __init__(self, dir, slice, shlibs, manifest, pin=None, soak=None):
         self.dir = dir
         self.slice = slice
         self.shlibs = shlibs
         self.manifest = manifest
+        self.pin = pin
+        self.soak = soak if soak is not None else {}
 
     def srcpkg_dir(self, name):
         """Absolute path of the snapshotted srcpkgs/<name>/ tree, or
@@ -91,7 +104,33 @@ def load(dir):
     if os.path.isfile(manifest_path):
         with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = [line.rstrip("\n") for line in f if line.strip()]
-    return Snapshot(dir, slice, shlibs, manifest)
+    pin = None
+    pin_path = os.path.join(dir, "pin")
+    if os.path.isfile(pin_path):
+        # One line, the full commit; an empty file pins nothing.
+        with open(pin_path, "r", encoding="utf-8") as f:
+            pin = f.readline().strip() or None
+    soak = {}
+    soak_path = os.path.join(dir, "soak")
+    if os.path.isfile(soak_path):
+        # Soak line: "<name> <pkgver> <lastmod-epoch> <committer-epoch>
+        # soaked|deferred", one line per requested package.
+        with open(soak_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                fields = line.split()
+                if len(fields) != 5 or fields[4] not in ("soaked",
+                                                         "deferred"):
+                    raise SnapshotError("%s: malformed soak line: %r"
+                                        % (soak_path, line.strip()))
+                try:
+                    lastmod, committer = int(fields[2]), int(fields[3])
+                except ValueError:
+                    raise SnapshotError("%s: malformed soak line: %r"
+                                        % (soak_path, line.strip()))
+                soak[fields[0]] = (fields[1], lastmod, committer, fields[4])
+    return Snapshot(dir, slice, shlibs, manifest, pin, soak)
 
 
 # dumps
@@ -175,11 +214,50 @@ def _run(cmd, **kwargs):
 
 
 def _curl(url):
-    proc = _run(["curl", "-sSfL", "--max-time", "300", url])
+    cmd = ["curl", "-sSfL", "--max-time", "300"]
+    stdin = None
+    token = os.environ.get("GITHUB_TOKEN")
+    if token and urllib.parse.urlsplit(url).hostname == "api.github.com":
+        # authenticated GitHub API, that host only (5,000 req/hour
+        # instead of 60).  The header rides curl's stdin config so the
+        # token never shows up in argv, logs, or error text, and it's
+        # never written to a snapshot or a recipe.  Unset -> unchanged.
+        cmd += ["--config", "-"]
+        stdin = ('header = "Authorization: Bearer %s"\n' % token).encode()
+    proc = _run(cmd + [url], input=stdin)
     if proc.returncode != 0:
         raise SnapshotError("fetch failed: %s: %s"
                             % (url, proc.stderr.decode().strip()))
     return proc.stdout
+
+
+def _head_times(url):
+    """HTTP HEAD -> (Last-Modified epoch, Date epoch), both parsed from
+    the server's own headers.  A failed HEAD or a missing/unparseable
+    header leaves that clock 0, which the soak verdict reads as doubt
+    and defers."""
+    proc = _run(["curl", "-sSfIL", "--max-time", "60", url])
+    if proc.returncode != 0:
+        return (0, 0)
+    lastmod = date = 0
+    # -L may print several header blocks; the last value seen wins.
+    for raw in proc.stdout.decode(errors="replace").splitlines():
+        key, sep, value = raw.partition(":")
+        if not sep:
+            continue
+        key = key.strip().lower()
+        if key not in ("last-modified", "date"):
+            continue
+        try:
+            parsed = email.utils.parsedate_to_datetime(value.strip())
+            epoch = int(parsed.timestamp())
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if key == "last-modified":
+            lastmod = epoch
+        else:
+            date = epoch
+    return (lastmod, date)
 
 
 def _sha256(data):
@@ -212,22 +290,85 @@ def _load_index(repodata_bytes, tmp):
         return plistlib.load(f)
 
 
+# One commits-API response answers two questions (expansion,
+# committer date); memoized per run so neither asks twice.
+_COMMIT_CACHE = {}
+
+
+def _commit_info(ref):
+    """Commits-API lookup -> (full 40-hex sha or "", committer-date
+    epoch or 0).  The payload is parsed defensively; only the fetch
+    itself raises (SnapshotError), so callers pick their own
+    severity."""
+    if ref in _COMMIT_CACHE:
+        return _COMMIT_CACHE[ref]
+    data = json.loads(_curl(COMMITS_API + ref).decode())
+    full = data.get("sha", "")
+    if not isinstance(full, str):
+        full = ""
+    date = ""
+    if isinstance(data.get("commit"), dict):
+        committer = data["commit"].get("committer")
+        if isinstance(committer, dict):
+            date = committer.get("date", "")
+    epoch = 0
+    if isinstance(date, str) and date:
+        try:
+            parsed = datetime.datetime.fromisoformat(
+                date.replace("Z", "+00:00"))
+            epoch = int(parsed.timestamp())
+        except ValueError:
+            epoch = 0
+    _COMMIT_CACHE[ref] = (full, epoch)
+    return (full, epoch)
+
+
 def _full_commit(abbrev):
     """Expand an abbreviated source-revisions commit to the full 40-hex
     id (GitHub only serves fetch-by-SHA for full ids)."""
     if len(abbrev) == 40:
         return abbrev
-    data = json.loads(_curl(COMMITS_API + abbrev).decode())
-    full = data.get("sha", "")
+    full, _epoch = _commit_info(abbrev)
     if len(full) != 40 or not full.startswith(abbrev):
         raise SnapshotError("commit %s: could not resolve full sha" % abbrev)
     return full
 
 
-def _fetch_srcpkg_trees(names, index, outdir, tmp):
+def _committer_epoch(abbrev):
+    """The commit's committer date as an epoch, 0 on any doubt (a
+    failed or dateless lookup defers instead of soaking)."""
+    try:
+        _full, epoch = _commit_info(abbrev)
+    except SnapshotError:
+        return 0
+    return epoch
+
+
+_PIN_LINE_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
+
+def _read_pin():
+    """translator/PIN, parsed by the significant-line rule
+    (blank lines and lines starting with '#' skipped): the first field of
+    the first significant line, or None.  An absent file, or one with no
+    significant line, means "track tip"."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PIN")
+    if not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip() or line.startswith("#"):
+                continue
+            return line.split()[0]
+    return None
+
+
+def _fetch_srcpkg_trees(names, index, outdir, tmp, pin=None):
     """Shallow, sparse, blob-filtered fetch of srcpkgs/<name>/ at each
     package's pinned commit; copies the verbatim trees under
-    outdir/srcpkgs/.  Returns {name: full commit}."""
+    outdir/srcpkgs/.  Returns {name: full commit}.  Under the kill
+    switch (pin = a full commit) every tree comes from the pin instead
+    of its source-revisions commit: one fetch, one checkout per name."""
     gitdir = os.path.join(tmp, "git")
     os.mkdir(gitdir)
     for cmd in (["git", "init", "-q", "."],
@@ -237,12 +378,15 @@ def _fetch_srcpkg_trees(names, index, outdir, tmp):
             raise SnapshotError("git setup failed: %s"
                                 % proc.stderr.decode().strip())
     commits = {}
-    for name in names:
-        abbrev = repodata.source_commit(name, index)
-        if abbrev is None:
-            raise SnapshotError("%s: repodata entry has no source-revisions"
-                                " commit" % name)
-        commits[name] = _full_commit(abbrev)
+    if pin is not None:
+        commits = {name: pin for name in names}
+    else:
+        for name in names:
+            abbrev = repodata.source_commit(name, index)
+            if abbrev is None:
+                raise SnapshotError("%s: repodata entry has no"
+                                    " source-revisions commit" % name)
+            commits[name] = _full_commit(abbrev)
     for sha in sorted(set(commits.values())):
         proc = _run(["git", "fetch", "-q", "--depth", "1",
                      "--filter=blob:none", "void", sha], cwd=gitdir)
@@ -309,6 +453,36 @@ def _harvest_makedepends(names, outdir, tmp):
     return harvested
 
 
+_WEEK = 7 * 86400
+
+
+def _soak_lines(names, index):
+    """The verdicts, one line per requested package:
+    "<name> <pkgver> <lastmod-epoch> <committer-epoch> soaked|deferred".
+
+    soaked only when BOTH server clocks read at least 7 days at the
+    mirror HEAD's own Date (mirror Last-Modified on the exact .xbps the
+    index names, and the source-revisions committer date); every doubt
+    (a failed HEAD, a missing header, an unresolvable commit) leaves a
+    clock at 0 and defers.  Translate never recomputes this: it reads
+    the recorded verdict, so goldens pin the decision."""
+    mirror = REPODATA_URL.rsplit("/", 1)[0]
+    lines = []
+    for name in names:
+        entry = index[name]
+        pkgver = entry.get("pkgver", "")
+        arch = entry.get("architecture", "x86_64")
+        lastmod, date = _head_times("%s/%s.%s.xbps" % (mirror, pkgver, arch))
+        abbrev = repodata.source_commit(name, index)
+        committer = _committer_epoch(abbrev) if abbrev else 0
+        soaked = (0 < lastmod <= date - _WEEK
+                  and 0 < committer <= date - _WEEK)
+        lines.append("%s %s %d %d %s"
+                     % (name, pkgver, lastmod, committer,
+                        "soaked" if soaked else "deferred"))
+    return lines
+
+
 def create(names, outdir):
     """Build the snapshot for `names` under `outdir` (network)."""
     names = sorted(set(names))
@@ -321,6 +495,18 @@ def create(names, outdir):
 
 
 def _create(names, outdir, tmp):
+    # the kill switch is read first so a malformed PIN fails before
+    # any heavy fetch.  Repodata stays CURRENT even under a pin: it's a
+    # rolling binary index, not commit-addressable, so there's nothing
+    # to pin it to.
+    pin = _read_pin()
+    if pin is not None:
+        if not _PIN_LINE_RE.match(pin):
+            raise SnapshotError("translator/PIN: %r is not a void-packages"
+                                " commit (40-hex or a >=7-hex abbreviation)"
+                                % pin)
+        pin = _full_commit(pin)
+
     index = _load_index(_curl(REPODATA_URL), tmp)
 
     problems = []
@@ -346,7 +532,16 @@ def _create(names, outdir, tmp):
     shlibs_url = "%s/%s/common/shlibs" % (RAW_URL, master_sha)
     shlibs_bytes = _curl(shlibs_url)
 
-    commits = _fetch_srcpkg_trees(names, index, outdir, tmp)
+    commits = _fetch_srcpkg_trees(names, index, outdir, tmp, pin)
+
+    # snapshot/pin and snapshot/soak are derived records, not fetched
+    # objects, so neither lands in the MANIFEST.
+    if pin is not None:
+        with open(os.path.join(outdir, "pin"), "w", encoding="utf-8") as f:
+            f.write(pin + "\n")
+    with open(os.path.join(outdir, "soak"), "w", encoding="utf-8") as f:
+        for line in _soak_lines(names, index):
+            f.write(line + "\n")
 
     # The slice: requested set + transitive run_depends closure,
     # + evaluated make-dependencies and injected tools + THEIR closures.

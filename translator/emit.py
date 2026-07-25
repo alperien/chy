@@ -972,8 +972,10 @@ def _collect_patches(srcdir, name):
 # origin/template/void-commit/pkgver/style, then dropped:, pinned:,
 # expect-needed:, each group sorted.  Never a translator version here.
 
-def _build_meta(name, entry, style, dropped, pinned):
-    commit = entry['source-revisions'].partition(':')[2]
+def _build_meta(name, entry, style, dropped, pinned, commit):
+    """commit is the one the srcpkg tree was fetched at: the snapshot's
+    pin when the kill switch is engaged, else the package's
+    source-revisions commit (the caller resolves which)."""
     lines = [
         'origin: translated',
         'template: srcpkgs/%s/template' % name,
@@ -1159,9 +1161,12 @@ def _translate_into(result, name, snap, dumpdir):
     conflicts = _translate_deps(dump['conflicts'].split(),
                                 snap.slice, name, 'conflicts')
 
-    # sources, checksums, patches
+    # sources, checksums, patches.  The effective commit is where
+    # the snapshot fetched the srcpkg tree: the pin when engaged,
+    # else the package's source-revisions commit; files/ asset URLs and
+    # the meta void-commit: line both carry it.
     srcdir = snap.srcpkg_dir(name)
-    commit = entry['source-revisions'].partition(':')[2]
+    commit = snap.pin or entry['source-revisions'].partition(':')[2]
     src_lines, sum_lines = _sources_and_checksums(
         name, version, dump, ctx.assets, srcdir, commit)
     patches = _collect_patches(srcdir, name)
@@ -1179,7 +1184,8 @@ def _translate_into(result, name, snap, dumpdir):
         files['makedepends'] = ('\n'.join(makedepends) + '\n').encode()
     if conflicts:
         files['conflicts'] = ('\n'.join(conflicts) + '\n').encode()
-    files['meta'] = _build_meta(name, entry, style, dropped, pinned).encode()
+    files['meta'] = _build_meta(name, entry, style, dropped, pinned,
+                                commit).encode()
     files.update(patches)
 
     _self_validate(name, files, style)

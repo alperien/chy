@@ -3,9 +3,11 @@
 
     chytrans snapshot --out DIR NAME...             (network)
     chytrans translate --snapshot DIR --out DIR NAME...   (offline)
+    chytrans overlay-check --snapshot DIR --overlay DIR   (offline)
 
-The moving parts: snapshot, outputs,
-shlibs.map, provided.suggested, refusals and exit status.
+The moving parts: the snapshot, the emitted outputs, shlibs.map,
+provided.suggested, refusals and exit status, soak deferrals, the
+kill-switch pin, overlay staleness.
 Python 3.9+, stdlib only.
 """
 
@@ -172,9 +174,21 @@ def cmd_translate(args):
         return 1
 
     report = []
+    if snap.pin:
+        # a fetched snapshot says so in the run ledger.
+        report.append("pin: %s" % snap.pin)
     translated = []
     exceptions = []
+    deferred = []
     hints = {}
+
+    # soak entries age offline: the snapshot records only server-supplied
+    # epochs, so the reference instant is the newest epoch anywhere in
+    # snapshot/soak (a local clock would break byte-identical
+    # reruns).  Ages are floor-day lower bounds; the recorded verdict,
+    # not the age, is what defers.
+    soak_ref = max((e for row in snap.soak.values()
+                    for e in (row[1], row[2]) if e > 0), default=0)
 
     def refuse(name, reason):
         report.append("refused: %s: %s" % (name, reason))
@@ -186,7 +200,21 @@ def cmd_translate(args):
             report.append("exception: %s" % name)
             continue
         if name not in snap.slice:
+            # a package gone from repodata hits this refusal before
+            # soak is consulted.
             refuse(name, "not in snapshot slice")
+            continue
+        soak = snap.soak.get(name)
+        if soak is not None and soak[3] == "deferred":
+            # deferred, not refused.  Kept, never regenerated: a
+            # recipe already in the out-root survives untouched (like a
+            # handwritten exception), absence emits nothing, and exit
+            # status is unaffected either way.
+            pkgver, lastmod, committer = soak[0], soak[1], soak[2]
+            clocks = [e for e in (lastmod, committer) if e > 0]
+            age = (soak_ref - max(clocks)) // 86400 if clocks else 0
+            deferred.append(name)
+            report.append("deferred: %s %s age=%d" % (name, pkgver, age))
             continue
         srcdir = snap.srcpkg_dir(name)
         if srcdir is None:
@@ -232,7 +260,10 @@ def cmd_translate(args):
         snap.slice, snap.shlibs)
     _write_lines(os.path.join(outroot, "shlibs.map"), map_lines)
 
-    drop = set(translated) | set(exceptions)
+    # Deferred names drop out like exceptions: a kept recipe is a corpus
+    # member, not something the host must provide ("like a
+    # handwritten exception").
+    drop = set(translated) | set(exceptions) | set(deferred)
     provided = ["%s %s" % (src, ",".join(sorted(hints[src])))
                 for src in sorted(hints) if src not in drop]
     _write_lines(os.path.join(outroot, "provided.suggested"), provided)
@@ -242,9 +273,10 @@ def cmd_translate(args):
     _write_lines(os.path.join(outroot, "TRANSLATOR_VERSION"),
                  [TRANSLATOR_VERSION])
 
-    # exit 0 iff every requested package was translated or is a
-    # preserved handwritten exception.
-    return 0 if set(names) == set(translated) | set(exceptions) else 1
+    # exit 0 iff every requested package was translated, is a kept
+    # handwritten exception, or was deferred by the soak gate.
+    return 0 if set(names) == set(translated) | set(exceptions) \
+        | set(deferred) else 1
 
 
 def cmd_snapshot(args):
@@ -254,6 +286,77 @@ def cmd_snapshot(args):
         sys.stderr.write("chytrans: %s\n" % err)
         return 1
     return 0
+
+
+def _overlay_base(odir):
+    """The overlay's recorded provenance: the first
+    `overlay-base:` value in overlay/<name>/meta, or None when the meta
+    or the line (or its value) is absent."""
+    meta = os.path.join(odir, "meta")
+    if not os.path.isfile(meta):
+        return None
+    with open(meta, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            key, sep, value = line.partition(":")
+            if sep and key.strip() == "overlay-base":
+                return value.strip() or None
+    return None
+
+
+def _commits_match(a, b):
+    """Prefix-tolerant commit compare, lowercase hex: either one a
+    prefix of the other (live source-revisions are abbreviated; pins and
+    fixtures may be 40-hex)."""
+    a, b = a.strip().lower(), b.strip().lower()
+    return bool(a) and bool(b) and (a.startswith(b) or b.startswith(a))
+
+
+def cmd_overlay_check(args):
+    """One line per overlay/<name>/ (byte-sorted), exit 0 iff no
+    alarm.  Separate from translate; translate's exit behavior is
+    untouched by overlay state."""
+    try:
+        snap = snapshot.load(args.snapshot)
+    except snapshot.SnapshotError as err:
+        sys.stderr.write("chytrans: %s\n" % err)
+        return 1
+    overlay_root = os.path.abspath(args.overlay)
+    if not os.path.isdir(overlay_root):
+        sys.stderr.write("chytrans: %s: not an overlay directory\n"
+                         % overlay_root)
+        return 1
+    alarms = 0
+
+    def alarm(name, detail):
+        sys.stderr.write("chytrans: %s: stale-overlay: %s\n" % (name, detail))
+
+    for name in sorted(os.listdir(overlay_root)):
+        if not os.path.isdir(os.path.join(overlay_root, name)):
+            continue
+        # Upstream is where the corpus would fetch this package today:
+        # under a pin the pin itself, else its current
+        # source-revisions commit; a name the snapshot does not know has
+        # no upstream and never alarms.
+        src = repodata.source_commit(name, snap.slice)
+        if src is None:
+            print("overlay: %s: local (no upstream in snapshot)" % name)
+            continue
+        upstream = snap.pin if snap.pin else src
+        base = _overlay_base(os.path.join(overlay_root, name))
+        if base is None:
+            # Provenance is mandatory for a shadowing overlay.
+            print("overlay: %s: unprovenanced (upstream at %s)"
+                  % (name, upstream))
+            alarm(name, "unprovenanced (upstream at %s)" % upstream)
+            alarms += 1
+        elif _commits_match(base, upstream):
+            print("overlay: %s: current (base %s)" % (name, base))
+        else:
+            print("overlay: %s: STALE: base %s, upstream now %s"
+                  % (name, base, upstream))
+            alarm(name, "base %s, upstream now %s" % (base, upstream))
+            alarms += 1
+    return 1 if alarms else 0
 
 
 def main(argv):
@@ -275,6 +378,13 @@ def main(argv):
     p_tr.add_argument("--out", required=True, metavar="DIR")
     p_tr.add_argument("names", nargs="+", metavar="NAME")
     p_tr.set_defaults(func=cmd_translate)
+
+    p_oc = sub.add_parser("overlay-check",
+                          help="alarm on overlay recipes whose upstream"
+                               " moved")
+    p_oc.add_argument("--snapshot", required=True, metavar="DIR")
+    p_oc.add_argument("--overlay", required=True, metavar="DIR")
+    p_oc.set_defaults(func=cmd_overlay_check)
 
     args = parser.parse_args(argv)
     return args.func(args)
