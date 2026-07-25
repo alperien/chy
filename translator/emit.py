@@ -349,7 +349,7 @@ def _sub_destdir(word):
         out.append(c)
         i += 1
     word_out = ''.join(out)
-    # our notation quotes the WHOLE mapped path -- "$1$CHY_ROOT/usr/x"
+    # our notation quotes the WHOLE mapped path, "$1$CHY_ROOT/usr/x",
     # not "$1$CHY_ROOT"/usr/x
     word_out = re.sub(r'"(\$1(?:\$CHY_ROOT)?)"(/[^\s"\']*)', r'"\1\2"', word_out)
     return word_out
