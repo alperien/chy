@@ -148,11 +148,20 @@ installed_names() { # entries under db/installed, byte-sorted
 }
 
 # recipes
-# Validate recipes/<name>/ and set R_DIR, R_VER, R_REV. Any invalidity
-# fails the install before any fetching begins.
+# overlay/<name>/ shadows recipes/<name>/ as a whole directory, never
+# per file. An invalid overlay fails loudly; it never falls
+# back to the corpus.
+recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the corpus dir
+    rd_d=$CHY_ROOT/overlay/$1
+    [ -d "$rd_d" ] || rd_d=$CHY_ROOT/recipes/$1
+    printf '%s\n' "$rd_d"
+}
+
+# Check the recipe dir and set R_DIR, R_VER, R_REV. Anything invalid
+# fails the install before any fetching starts.
 recipe_check() { # recipe_check <name>
-    R_DIR=$CHY_ROOT/recipes/$1
-    [ -d "$R_DIR" ] || fail "$1" "unknown package: no recipe at recipes/$1"
+    R_DIR=$(recipe_dir "$1")
+    [ -d "$R_DIR" ] || fail "$1" "no recipe for $1"
     for rc_f in version sources checksums build; do
         [ -f "$R_DIR/$rc_f" ] || fail "$1" "recipe missing required file: $rc_f"
     done
@@ -344,7 +353,7 @@ prepare_build() { # prepare_build <name>
 }
 
 # build
-# sh recipes/<name>/build <destdir> <version>, cwd the prepared build
+# sh <recipe dir>/build <destdir> <version>, cwd the prepared build
 # dir, with the environment. A nonzero exit aborts the install.
 run_build() { # run_build <name>
     say "$1" "build $1-$R_VER"
@@ -356,7 +365,7 @@ run_build() { # run_build <name>
         LDFLAGS="${LDFLAGS:+$LDFLAGS }-L$CHY_PREFIX/lib -Wl,-rpath,$CHY_PREFIX/lib"
         PKG_CONFIG_PATH="$CHY_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
         export CHY_ROOT CHY_PREFIX PATH CPPFLAGS LDFLAGS PKG_CONFIG_PATH
-        exec sh "$CHY_ROOT/recipes/$1/build" "$DEST" "$R_VER"
+        exec sh "$R_DIR/build" "$DEST" "$R_VER"
     ) || fail "$1" "build failed"
 }
 
@@ -785,7 +794,7 @@ resolve() { # resolve <space-separated requested names>; sets ORDER
 
     while pop; do
         rv_cur=$POP
-        rv_dir=$CHY_ROOT/recipes/$rv_cur
+        rv_dir=$(recipe_dir "$rv_cur")
         if [ ! -d "$rv_dir" ]; then       # a leaf: its needs are unknowable
             printf '%s\n' "$rv_cur" >>"$RES/missing"
             continue
@@ -829,7 +838,7 @@ resolve() { # resolve <space-separated requested names>; sets ORDER
 resolve_conflicts() {
     : >"$RES/pairs"
     while IFS= read -r rc_n <&3; do
-        list_names "$CHY_ROOT/recipes/$rc_n/conflicts" >"$RES/confl"
+        list_names "$(recipe_dir "$rc_n")/conflicts" >"$RES/confl"
         while IFS= read -r rc_c <&4; do
             [ "$rc_c" = "$rc_n" ] && continue
             [ ! -d "$CHY_ROOT/db/installed/$rc_c" ] ||
@@ -1120,7 +1129,7 @@ cmd_list() {
 version_drift() { # version_drift <name>: true when db and recipe differ
     read_version "$CHY_ROOT/db/installed/$1/version"
     OD_IV=$VQ_VER OD_IR=$VQ_REV
-    read_version "$CHY_ROOT/recipes/$1/version"
+    read_version "$(recipe_dir "$1")/version"
     OD_RV=$VQ_VER OD_RR=$VQ_REV
     [ -n "$OD_RR" ] || OD_RR=1
     [ "$OD_IV $OD_IR" != "$OD_RV $OD_RR" ]
@@ -1134,7 +1143,7 @@ outdated_walk() {
     installed_names | while IFS= read -r od_n; do
         if in_set "$od_n" "$PROVIDED"; then
             warn "$od_n" 'provided by the host'
-        elif [ ! -d "$CHY_ROOT/recipes/$od_n" ]; then
+        elif [ ! -d "$(recipe_dir "$od_n")" ]; then
             warn "$od_n" 'no recipe'
         elif version_drift "$od_n"; then
             printf '%s %s %s -> %s %s\n' "$od_n" \
@@ -1301,7 +1310,7 @@ rebuild_set() { # rebuild_set <bumped-set> <done-set>
             in_set "$rb_d" "$2" && continue
             if in_set "$rb_d" "$PROVIDED"; then     # unbuildable dependents:
                 warn "$rb_d" 'provided by the host'
-            elif [ ! -d "$CHY_ROOT/recipes/$rb_d" ]; then
+            elif [ ! -d "$(recipe_dir "$rb_d")" ]; then
                 warn "$rb_d" 'no recipe'            # doctor will name the
             else                                    # soname they still need
                 rb_new="$rb_new$rb_d "
@@ -1369,7 +1378,7 @@ EOF
         for cu_n in "$@"; do        # cascade discipline: every name is
             valid_name "$cu_n" || fail "$cu_n" "invalid package name"
             [ -d "$CHY_ROOT/db/installed/$cu_n" ] || fail "$cu_n" "not installed"
-            [ -d "$CHY_ROOT/recipes/$cu_n" ] || fail "$cu_n" "no recipe"
+            [ -d "$(recipe_dir "$cu_n")" ] || fail "$cu_n" "no recipe"
         done                        # checked before anything is touched
         for cu_n in "$@"; do
             in_set "$cu_n" "$CU_T" && continue
@@ -1385,7 +1394,7 @@ EOF
         cu_rep=$(installed_names | while IFS= read -r cu_n; do
             in_set "$cu_n" "$CU_T" && continue
             in_set "$cu_n" "$PROVIDED" && continue
-            [ -d "$CHY_ROOT/recipes/$cu_n" ] || continue
+            [ -d "$(recipe_dir "$cu_n")" ] || continue
             read_version "$CHY_ROOT/db/installed/$cu_n/version"
             [ -n "$VQ_VER" ] || continue
             if needs_relink "$CHY_ROOT/store/$cu_n-$VQ_VER"; then
