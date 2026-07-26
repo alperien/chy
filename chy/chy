@@ -8,16 +8,31 @@
 # remove, list, outdated, why, and doctor all work from that on-disk
 # state. usage() lists the verbs.
 
-CHY_VERSION=0.4.0
+CHY_VERSION=0.5.0
 set -u
 
 CR=$(printf '\r') # to strip from lines of hand-edited (DOS) recipe files
 
 # output
-# grammar: progress and completion on stdout, warnings and
-# errors on stderr, everything prefixed "chy: <name>:".
+# stdout: progress and the order/rebuild
+# announcements are "-> <scope> <step>", results are "+ <name>
+# <ver>_<rev>" (installed) and "- <name> <ver>_<rev>" (removed);
+# doctor and why report lines carry no program prefix. stderr keeps
+# the Unix "chy: <name>: warning|error: <what>" grammar.
+# On a terminal, with NO_COLOR unset or empty, only the sigils are
+# tinted; piped or redirected stdout is byte-identical to the plain
+# grammar, and stderr is never colored.
 
-say() { printf 'chy: %s: %s\n' "$1" "$2"; }
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    C_ARROW=$(printf '\033[34m') C_PLUS=$(printf '\033[32m')
+    C_MINUS=$(printf '\033[31m') C_OFF=$(printf '\033[0m')
+else
+    C_ARROW='' C_PLUS='' C_MINUS='' C_OFF=''
+fi
+
+step()    { printf '%s->%s %s %s\n' "$C_ARROW" "$C_OFF" "$1" "$2"; }
+added()   { printf '%s+%s %s %s_%s\n' "$C_PLUS" "$C_OFF" "$1" "$2" "$3"; }
+removed() { printf '%s-%s %s %s_%s\n' "$C_MINUS" "$C_OFF" "$1" "$2" "$3"; }
 warn() { printf 'chy: %s: warning: %s\n' "$1" "$2" >&2; }
 err() { printf 'chy: %s: error: %s\n' "$1" "$2" >&2; }
 fail() { err "$1" "$2"; exit 1; }
@@ -243,7 +258,7 @@ fetch_source() { # fetch_source <name> <sha256> <source line>
     fs_file=$(first_field "$3")
     fs_file=${fs_file##*/}
     fs_cache=$CHY_ROOT/cache/$fs_file
-    say "$1" "fetch $fs_file"
+    step "$1" "fetch $fs_file"
     require "$1" sha256sum
     if [ -f "$fs_cache" ] && [ "$(sha_of "$fs_cache")" = "$2" ]; then
         return 0
@@ -345,7 +360,7 @@ prepare_build() { # prepare_build <name>
     done | LC_ALL=C sort >"$CHY_ROOT/build/patchlist"
     while IFS= read -r pb_p; do
         require "$1" patch
-        say "$1" "apply $pb_p"
+        step "$1" "apply $pb_p"
         # TODO: -p1 is hardcoded; a few void patches want -p0 (libffi)
         (cd "$WORK" && patch -p1 <"$R_DIR/patches/$pb_p") ||
             fail "$1" "patch failed to apply: $pb_p"
@@ -356,7 +371,7 @@ prepare_build() { # prepare_build <name>
 # sh <recipe dir>/build <destdir> <version>, cwd the prepared build
 # dir, with the environment. A nonzero exit aborts the install.
 run_build() { # run_build <name>
-    say "$1" "build $1-$R_VER"
+    step "$1" "build $1-$R_VER"
     (
         cd "$WORK" || exit 1
         CHY_PREFIX=$CHY_ROOT/usr
@@ -724,7 +739,7 @@ do_remove() { # do_remove <name>; the package must be installed
     rm -f "$CHY_ROOT/store/$1"
     rm -rf "$CHY_ROOT/store/$1-$dr_ver"
     rm -rf "$dr_db"
-    say "$1" "removed $dr_ver $dr_rev"
+    removed "$1" "$dr_ver" "$dr_rev"
 }
 
 # install
@@ -751,7 +766,7 @@ do_install() { # do_install <name> <requested: 1|0>
     di_alias=
     [ ! -L "$CHY_ROOT/store/$1" ] || di_alias=$(readlink "$CHY_ROOT/store/$1")
 
-    say "$1" "link $1-$R_VER"
+    step "$1" "link $1-$R_VER"
     mkdir -p "$CHY_ROOT/store"
     : >"$CHY_ROOT/build/linked"
     rm -rf "$CHY_ROOT/store/$1-$R_VER"
@@ -773,7 +788,7 @@ do_install() { # do_install <name> <requested: 1|0>
 
     write_db "$1" "$2"                              # 11: presence = installed
     verify_runtime "$1"                             # 12: warnings only
-    say "$1" "installed $R_VER $R_REV"
+    added "$1" "$R_VER" "$R_REV"
 }
 
 # resolver
@@ -987,7 +1002,7 @@ cmd_install() {
     [ "$ci_nodeps" -eq 1 ] ||           # the order as given
         resolve "$ci_names"
 
-    printf 'chy: order: %s\n' "$ORDER"
+    step order "$ORDER"
     REST=$ORDER
     while pop; do
         ci_req=0
@@ -1181,17 +1196,17 @@ cmd_why() {
         fi
         cw_why=0
         if [ -f "$CHY_ROOT/db/installed/$cw_n/requested" ]; then
-            say "$cw_n" 'requested'
+            printf '%s: %s\n' "$cw_n" 'requested'
             cw_why=1
         fi
         cw_by=$(requirers_of "$cw_n" ' ')
         cw_by=${cw_by% }
         if [ -n "$cw_by" ]; then
-            say "$cw_n" "required by: $cw_by"
+            printf '%s: %s\n' "$cw_n" "required by: $cw_by"
             cw_why=1
         fi
         [ "$cw_why" -eq 1 ] ||
-            say "$cw_n" 'orphan (not requested, nothing requires it)'
+            printf '%s: %s\n' "$cw_n" 'orphan (not requested, nothing requires it)'
     done
     exit "$cw_bad"
 }
@@ -1217,7 +1232,7 @@ doctor_scan() {
         [ "$dsc_ldd" -eq 0 ] ||                    # 1: unresolved libraries
             scan_needs "$CHY_ROOT/store/$ds_p-$ds_v" |
                 while IFS= read -r ds_s; do
-                    printf 'chy: doctor: %s: needs %s\n' "$ds_p" "$ds_s"
+                    printf 'doctor: %s: needs %s\n' "$ds_p" "$ds_s"
                 done
 
         [ -f "$ds_m" ] || continue
@@ -1226,17 +1241,17 @@ doctor_scan() {
             [ -L "$CHY_ROOT/$ds_mp" ] || continue
             [ "$(owner_of "$CHY_ROOT/$ds_mp")" = "$ds_p" ] || continue
             [ -e "$CHY_ROOT/$ds_mp" ] ||
-                printf 'chy: doctor: %s: broken link %s\n' "$ds_p" "$ds_mp"
+                printf 'doctor: %s: broken link %s\n' "$ds_p" "$ds_mp"
         done <"$ds_m"
         while IFS= read -r ds_mp || [ -n "$ds_mp" ]; do   # 3: manifest drift
             [ -n "$ds_mp" ] || continue
             if [ -L "$CHY_ROOT/$ds_mp" ]; then
                 [ "$(owner_of "$CHY_ROOT/$ds_mp")" = "$ds_p" ] ||
-                    printf 'chy: doctor: %s: foreign %s\n' "$ds_p" "$ds_mp"
+                    printf 'doctor: %s: foreign %s\n' "$ds_p" "$ds_mp"
             elif [ -e "$CHY_ROOT/$ds_mp" ]; then
-                printf 'chy: doctor: %s: foreign %s\n' "$ds_p" "$ds_mp"
+                printf 'doctor: %s: foreign %s\n' "$ds_p" "$ds_mp"
             else
-                printf 'chy: doctor: %s: missing %s\n' "$ds_p" "$ds_mp"
+                printf 'doctor: %s: missing %s\n' "$ds_p" "$ds_mp"
             fi
         done <"$ds_m"
     done
@@ -1247,11 +1262,11 @@ cmd_doctor() {
     require doctor readlink
     cd_out=$(doctor_scan)
     if [ -z "$cd_out" ]; then
-        printf 'chy: doctor: clean\n'
+        printf 'doctor: clean\n'
         exit 0
     fi
     printf '%s\n' "$cd_out"
-    printf 'chy: doctor: %s problem(s)\n' \
+    printf 'doctor: %s problem(s)\n' \
         "$(( $(printf '%s\n' "$cd_out" | wc -l) ))"
     exit 1
 }
@@ -1419,7 +1434,7 @@ EOF
 
     REQUESTED=$CU_T                 # resolver blame stays install-scoped
     resolve "$cu_names"
-    printf 'chy: order: %s\n' "$ORDER"
+    step order "$ORDER"
     CU_DONE=' ' CU_BUMP=' '
     upgrade_run "$ORDER"
 
@@ -1431,7 +1446,7 @@ EOF
         esac
         [ -n "$cu_batch" ] || break
         if [ "$cu_said" -eq 0 ]; then
-            printf 'chy: rebuild: %s\n' "$cu_batch"
+            step rebuild "$cu_batch"
             cu_said=1
         fi
         REST=$cu_batch              # markers, same snapshot rule
