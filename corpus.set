@@ -1,0 +1,26 @@
+# The package set the scheduled corpus-sync translates.
+# One name per line; blank lines and # lines are ignored.
+# The curated 20: the Firefox runtime spine over an X11-provided
+# host. firefox itself is a handwritten binary exception, seeded not
+# translated, so it is not listed here; bzip2 stays listed and is preserved
+# as its own handwritten exception.
+zlib
+bzip2
+xz
+zstd
+libffi
+expat
+pcre2
+glib
+libpng
+freetype
+harfbuzz
+fontconfig
+pixman
+cairo
+pango
+gdk-pixbuf
+libepoxy
+at-spi2-core
+gtk+3
+dbus

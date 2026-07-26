@@ -1,0 +1,83 @@
+# Scheduled corpus sync. Daily: snapshot Void, translate
+# the corpus.set, and push the diff to the bot-only corpus repo; a refusal
+# opens an issue here instead of committing. The logic lives in ci/*.sh so
+# it is testable offline (tests/810-814); this file only wires it up.
+#
+# One-time setup by hand: create alperien/chy-corpus,
+# add a write deploy key there, store its private key as the CORPUS_DEPLOY_KEY
+# secret here, and lock the corpus default branch to that key.
+name: corpus-sync
+
+on:
+  schedule:
+    - cron: '17 3 * * *'          # daily 03:17 UTC, off the top of the hour
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'push commits and open issues (off = dry run, decides only)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read                  # main-repo checkout only; corpus uses the deploy key
+  issues: write                   # failure issues
+  actions: write                  # keepalive (re-enable the schedule)
+
+concurrency:
+  group: corpus-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: check out chy
+        uses: actions/checkout@v4
+
+      - name: check out the corpus repo (deploy key)
+        uses: actions/checkout@v4
+        with:
+          repository: alperien/chy-corpus
+          ssh-key: ${{ secrets.CORPUS_DEPLOY_KEY }}
+          path: corpus
+
+      - name: verify the corpus lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p decisions
+          if ! sh ci/corpus-verify-lock.sh --repo alperien/chy-corpus --decisions decisions; then
+            RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            find decisions -type f -exec sed -i "s#RUN_URL#$RUN_URL#g" {} +
+            sh ci/corpus-apply.sh --decisions decisions --corpus corpus --issue-repo ${{ github.repository }}
+            echo "corpus lock is loosened; filed an issue and stopped." >&2
+            exit 1
+          fi
+
+      - name: snapshot Void (the only networked step)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}   # authed API, for the rate limit
+        run: python3 translator/chytrans snapshot --out snap $(grep -v '^#' corpus.set)
+
+      - name: translate and decide (offline, deterministic)
+        run: sh ci/corpus-sync.sh --snapshot snap --corpus corpus --set corpus.set --decisions decisions --translator .
+
+      - name: show the decision
+        if: always()
+        run: ls -R decisions 2>/dev/null; cat decisions/nochange decisions/commit.msg 2>/dev/null || true
+
+      - name: apply (push and issues)
+        if: github.event_name == 'schedule' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          find decisions -type f -exec sed -i "s#RUN_URL#$RUN_URL#g" {} +
+          sh ci/corpus-apply.sh --decisions decisions --corpus corpus --issue-repo ${{ github.repository }}
+
+      - name: keepalive (reset the 60-day schedule-disable timer)
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/corpus-sync.yml/enable"
