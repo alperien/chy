@@ -1,55 +1,28 @@
 # chy
 
-A tiny, source-based package manager for hand-built Linux systems. One
-POSIX shell script, with no database, no daemon, and no root.
+chy is a byte-sized, portable, source-based package manager written in
+POSIX shell. 1.5k lines of pretty shell with no dependencies.
 
-`chy` builds each package into its own directory and links it into a
-symlink farm under `$CHY_ROOT`. Recipes are not written by hand: a
-separate tool translates them from [Void Linux][void]'s package tree, so
-the set follows upstream instead of going stale.
+Packages are recipe based and easily readable and tweakable
 
-```
-chy install freetype      # resolve dependencies, build, link
-chy remove -r freetype    # remove it, and any orphans it leaves
-chy list                  # what is installed
-chy doctor                # check the farm and the linked libraries
-```
+Everything is at $CHY_ROOT, ~/.chy by default. Packages get built into
+store/ and get linked into a usr/ symlink farm. chy lives in userland and won't write outside its
+root, so deleting the folder is equal to a full uninstall. Running chy with no arguments prints
+the list of all options.
 
-## Getting started
+    git clone https://github.com/alperien/chy && cd chy
+    export CHY_ROOT=$HOME/.chy PATH="$HOME/.chy/usr/bin:$PATH"
+    mkdir -p "$CHY_ROOT" && ln -s "$PWD/recipes" "$CHY_ROOT/recipes"
+    sh chy/chy install freetype
 
-```
-git clone https://github.com/alperien/chy
-cd chy
-export CHY_ROOT="$HOME/.chy"
-export PATH="$CHY_ROOT/usr/bin:$PATH"
-sh chy/chy install freetype
-```
+A recipe is a folder containing text files: version, sources, checksums,
+depends, makedepends, a build script, and patches/. A recipe repo is a
+directory of recipes, chy builds from whichever one $CHY_ROOT/recipes
+points at: the symlink above picks the default repo, but making your
+own is encouraged. For quick tweaks there's also
+$CHY_ROOT/overlay/<name>, which chy reads before the repo.
 
-`chy` is the single file `chy/chy`. Copy it onto your `PATH` as `chy`, or
-run it in place with `sh chy/chy`.
+The default repo is converted from Void Linux's xbps by the chytrans tool. All fixes go in the
+translator, and PRs that edit recipes/ get closed.
 
-`$CHY_ROOT` is the whole world it touches. Leave it unset and it defaults
-to `$HOME/.chy`. chy never writes outside that directory and never needs
-privilege, so two roots at two paths are completely independent.
-
-## Layout
-
-```
-chy/chy          the package manager, one POSIX sh file
-translator/      chytrans: Void templates into chy recipes
-recipes/         the generated recipe corpus
-test             the test suite (run: sh ./test)
-```
-
-## Recipes are generated
-
-Recipes come from the translator, so a pull request that adds or edits one
-will be closed. When a recipe is wrong the fix goes into the translator,
-and the affected recipes are regenerated. Nobody maintains thousands of
-build files by hand.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
-
-[void]: https://github.com/void-linux/void-packages
+MIT.
