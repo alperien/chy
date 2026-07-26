@@ -165,8 +165,8 @@ installed_names() { # entries under db/installed, byte-sorted
 # recipes
 # overlay/<name>/ shadows recipes/<name>/ as a whole directory, never
 # per file. An invalid overlay fails loudly; it never falls
-# back to the corpus.
-recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the corpus dir
+# back to the default repo.
+recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the default repo dir
     rd_d=$CHY_ROOT/overlay/$1
     [ -d "$rd_d" ] || rd_d=$CHY_ROOT/recipes/$1
     printf '%s\n' "$rd_d"
