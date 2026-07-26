@@ -1,9 +1,9 @@
 #!/bin/sh
-# the order line `chy: order: <names>` always prints (even for
-# a single package) before any pipeline step. When the needed set is
-# empty (everything requested is provided) no order line prints and
-# install exits 0. Under --no-deps the line carries the remaining names in
-# first-occurrence order, duplicates collapsed.
+# the order line `-> order <names>` always prints (even for a single
+# package) before any pipeline step. Empty needed set (everything
+# requested is provided): no order line, install exits 0. Under
+# --no-deps the line carries the remaining names in first-occurrence
+# order, duplicates collapsed.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -16,7 +16,7 @@ mkpkg "$CHY_ROOT" solo 1.0 usr/bin/solo-tool
 run_chy install solo
 assert_rc 0 'solo install'
 assert_order_first 'solo'
-file_has_line "$OUT" 'chy: solo: installed 1.0 1'
+file_has_line "$OUT" '+ solo 1.0_1'
 
 # --- everything requested is provided: no order line, no stdout, exit 0 ---
 printf 'hosta\nhostb\n' >"$CHY_ROOT/db/provided"

@@ -48,7 +48,7 @@ mkpkg "$CHY_ROOT" badcand 1.0
 
 run_chy install badcand
 assert_rc 0 'warnings never affect exit status'
-file_has_line "$OUT" 'chy: badcand: installed 1.0 1'
+file_has_line "$OUT" '+ badcand 1.0_1'
 assert_installed "$CHY_ROOT" badcand 1.0 1
 if [ "$strict" -eq 1 ]; then
     want=$(printf 'chy: badcand: warning: needs %s\nchy: badcand: warning: needs %s' \
@@ -62,12 +62,12 @@ fi
 run_chy doctor
 assert_rc 1 'a junk candidate is never a clean root'
 if [ "$strict" -eq 1 ]; then
-    want=$(printf 'chy: doctor: badcand: needs %s
-chy: doctor: badcand: needs %s
-chy: doctor: 2 problem(s)' "$fake_a" "$fake_b")
+    want=$(printf 'doctor: badcand: needs %s
+doctor: badcand: needs %s
+doctor: 2 problem(s)' "$fake_a" "$fake_b")
     assert_eq "$(cat "$OUT")" "$want" 'doctor recovers both sonames'
 else
-    if grep -Fxq 'chy: doctor: clean' "$OUT"; then
+    if grep -Fxq 'doctor: clean' "$OUT"; then
         dump_streams
         fail 'doctor said clean over a loader-aborting root'
     fi

@@ -201,25 +201,25 @@ stamp_builds() {
     printf 'touch "%s/built-%s"\n' "$3" "$2" >>"$1/recipes/$2/build"
 }
 
-# installed_seq - names from the "installed" completion lines of $OUT, in
+# installed_seq - names from the + result lines of $OUT, in
 # order, space-joined. The build sequence of the last install invocation.
 installed_seq() {
-    sed -n 's/^chy: \(.*\): installed .*$/\1/p' "$OUT" | tr '\n' ' ' | sed 's/ $//'
+    sed -n 's/^+ \(.*\) [^ ]*$/\1/p' "$OUT" | tr '\n' ' ' | sed 's/ $//'
 }
 
-# removed_seq - same for "removed" completion lines.
+# removed_seq - same for the - result lines.
 removed_seq() {
-    sed -n 's/^chy: \(.*\): removed .*$/\1/p' "$OUT" | tr '\n' ' ' | sed 's/ $//'
+    sed -n 's/^- \(.*\) [^ ]*$/\1/p' "$OUT" | tr '\n' ' ' | sed 's/ $//'
 }
 
 # assert_order 'names...' - exactly one order line on stdout, pinned.
 assert_order() {
-    ao_n=$(count_matches '^chy: order: ' "$OUT")
+    ao_n=$(count_matches '^-> order ' "$OUT")
     if [ "$ao_n" != 1 ]; then
         dump_streams
         fail "expected exactly one order line, found $ao_n"
     fi
-    file_has_line "$OUT" "chy: order: $1"
+    file_has_line "$OUT" "-> order $1"
 }
 
 # assert_order_first 'names...' - the order line, and it precedes every
@@ -228,12 +228,12 @@ assert_order() {
 assert_order_first() {
     assert_order "$1"
     aof_first=$(head -n 1 "$OUT")
-    assert_eq "$aof_first" "chy: order: $1" 'order line must come first on stdout'
+    assert_eq "$aof_first" "-> order $1" 'order line must come first on stdout'
 }
 
 # assert_no_order - no order line printed at all.
 assert_no_order() {
-    if grep -q '^chy: order: ' "$OUT"; then
+    if grep -q '^-> order ' "$OUT"; then
         dump_streams
         fail 'an order line printed where none belongs'
     fi

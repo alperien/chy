@@ -25,7 +25,7 @@ esac
 
 run_chy_root "$broot" install bspkg
 assert_rc 0 'install under a backslash root'
-file_has_line "$OUT" 'chy: bspkg: installed 1.0 1'
+file_has_line "$OUT" '+ bspkg 1.0_1'
 assert_installed "$broot" bspkg 1.0 1
 assert_link "$broot/usr/bin/bs-tool" '../../store/bspkg/usr/bin/bs-tool'
 assert_eq "$(cat "$broot/usr/bin/bs-tool")" \

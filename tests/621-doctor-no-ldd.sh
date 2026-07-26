@@ -32,14 +32,14 @@ assert_rc 0 'okpkg install'
 
 run env "PATH=$NOLDD" sh "$CHY" doctor
 assert_rc 0 'no ldd, clean root: doctor exits 0'
-assert_eq "$(cat "$OUT")" 'chy: doctor: clean' 'stdout is exactly the clean line'
+assert_eq "$(cat "$OUT")" 'doctor: clean' 'stdout is exactly the clean line'
 assert_eq "$(cat "$ERR")" "$skipwarn" 'stderr is exactly the skip warning'
 
 # --- checks 2 and 3 still run without ldd ---
 rm "$CHY_ROOT/usr/bin/ok-tool"
 run env "PATH=$NOLDD" sh "$CHY" doctor
 assert_rc 1 'no ldd: manifest drift still found'
-want=$(printf 'chy: doctor: okpkg: missing usr/bin/ok-tool\nchy: doctor: 1 problem(s)')
+want=$(printf 'doctor: okpkg: missing usr/bin/ok-tool\ndoctor: 1 problem(s)')
 assert_eq "$(cat "$OUT")" "$want" 'the missing finding survives the skip'
 assert_eq "$(cat "$ERR")" "$skipwarn" 'still exactly the skip warning'
 
@@ -61,12 +61,12 @@ assert_rc 0 'needy install'
 
 run_chy_root "$rn" doctor
 assert_rc 1 'with ldd the soname is a problem'
-want=$(printf 'chy: doctor: needy: needs %s\nchy: doctor: 1 problem(s)' "$fake_s")
+want=$(printf 'doctor: needy: needs %s\ndoctor: 1 problem(s)' "$fake_s")
 assert_eq "$(cat "$OUT")" "$want" 'sanity: check 1 fires when ldd exists'
 
 run env "PATH=$NOLDD" "CHY_ROOT=$rn" sh "$CHY" doctor
 assert_rc 0 'no ldd: check 1 gone, the root reads clean'
-assert_eq "$(cat "$OUT")" 'chy: doctor: clean' 'skip means no needs findings at all'
+assert_eq "$(cat "$OUT")" 'doctor: clean' 'skip means no needs findings at all'
 assert_eq "$(cat "$ERR")" "$skipwarn" 'and exactly the skip warning'
 
 exit 0

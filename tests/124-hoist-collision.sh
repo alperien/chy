@@ -37,7 +37,7 @@ EOF
 
 run_chy install hc
 assert_rc 0 'source entries named like hoist scratch survive hoisting'
-file_has_line "$OUT" 'chy: hc: installed 1.0 1'
+file_has_line "$OUT" '+ hc 1.0_1'
 assert_installed "$CHY_ROOT" hc 1.0 1
 assert_link "$CHY_ROOT/usr/share/hc/marker" \
     '../../../store/hc/usr/share/hc/marker'

@@ -22,7 +22,7 @@ ln -s ../../store/thief/usr/bin/owl-c "$CHY_ROOT/usr/bin/owl-c" # another owner
 
 run_chy remove owl
 assert_rc 0 'unowned paths never affect the exit status'
-file_has_line "$OUT" 'chy: owl: removed 1.0 1'
+file_has_line "$OUT" '- owl 1.0_1'
 assert_eq "$(cat "$ERR")" \
     "$(printf 'chy: owl: warning: usr/bin/owl-b is not owned by owl; left in place\nchy: owl: warning: usr/bin/owl-c is not owned by owl; left in place')" \
     'exact not-owned warnings, manifest order'

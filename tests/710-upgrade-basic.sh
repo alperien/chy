@@ -39,8 +39,8 @@ rm -f "$TMPD/built-lib" "$TMPD/built-app"
 run_chy upgrade
 assert_rc 0 'upgrade converges lib'
 assert_order_first 'lib'
-file_has_line "$OUT" 'chy: lib: installed 1.1 1'
-assert_eq "$(count_matches '^chy: app: installed ' "$OUT")" 0 'app is current: not rebuilt'
+file_has_line "$OUT" '+ lib 1.1_1'
+assert_eq "$(count_matches '^+ app ' "$OUT")" 0 'app is current: not rebuilt'
 assert_empty_file "$ERR"
 [ -f "$TMPD/built-lib" ] || fail 'the lib build must run'
 assert_absent "$TMPD/built-app"
@@ -54,7 +54,7 @@ assert_rc 0 'outdated after upgrade exits 0'
 assert_empty_file "$OUT" 'the root matches the corpus again'
 run_chy doctor
 assert_rc 0 'doctor after upgrade'
-assert_eq "$(cat "$OUT")" 'chy: doctor: clean' 'the root is clean'
+assert_eq "$(cat "$OUT")" 'doctor: clean' 'the root is clean'
 
 # --- both outdated: dependency order, markers preserved, why agrees ---
 printf '1.2\n' >"$CHY_ROOT/recipes/lib/version"
@@ -63,8 +63,8 @@ run_chy upgrade
 assert_rc 0 'both converge'
 assert_order_first 'lib app'
 assert_eq "$(installed_seq)" 'lib app' 'the dependency rebuilds before its dependent'
-file_has_line "$OUT" 'chy: lib: installed 1.2 1'
-file_has_line "$OUT" 'chy: app: installed 2.0 1'
+file_has_line "$OUT" '+ lib 1.2_1'
+file_has_line "$OUT" '+ app 2.0_1'
 assert_installed "$CHY_ROOT" lib 1.2 1
 assert_installed "$CHY_ROOT" app 2.0 1
 assert_requested "$CHY_ROOT" app
@@ -72,10 +72,10 @@ assert_not_requested "$CHY_ROOT" lib
 
 run_chy why app
 assert_rc 0 'why app'
-assert_eq "$(cat "$OUT")" 'chy: app: requested' 'app keeps its marker through upgrade'
+assert_eq "$(cat "$OUT")" 'app: requested' 'app keeps its marker through upgrade'
 run_chy why lib
 assert_rc 0 'why lib'
-assert_eq "$(cat "$OUT")" 'chy: lib: required by: app' 'lib is still only a dependency'
+assert_eq "$(cat "$OUT")" 'lib: required by: app' 'lib is still only a dependency'
 
 run_chy outdated
 assert_rc 0
@@ -109,8 +109,8 @@ rm -f "$TMPD/built-lib" "$TMPD/built-app"
 run_chy upgrade lib
 assert_rc 0 'named upgrade'
 assert_order_first 'lib'
-file_has_line "$OUT" 'chy: lib: installed 1.3 1'
-assert_eq "$(count_matches '^chy: app: installed ' "$OUT")" 0 'app was not named'
+file_has_line "$OUT" '+ lib 1.3_1'
+assert_eq "$(count_matches '^+ app ' "$OUT")" 0 'app was not named'
 assert_absent "$TMPD/built-app"
 assert_installed "$CHY_ROOT" lib 1.3 1
 

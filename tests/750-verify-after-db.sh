@@ -31,7 +31,7 @@ assert_rc 0 'runtime warnings never affect exit status'
 assert_eq "$(cat "$ERR")" "chy: warned: warning: needs $fake_w" \
     'stderr is exactly the one needs warning'
 assert_order_first 'warned'
-file_has_line "$OUT" 'chy: warned: installed 1.0 1'
+file_has_line "$OUT" '+ warned 1.0_1'
 
 # --- the db entry is whole: version, manifest, marker, placement ---
 assert_installed "$CHY_ROOT" warned 1.0 1
@@ -52,12 +52,12 @@ assert_eq "$(cat "$OUT")" 'warned 1.0 1' 'listed like any package'
 run_chy doctor
 assert_rc 1 'the unresolved soname is a doctor problem'
 assert_eq "$(cat "$OUT")" \
-    "$(printf 'chy: doctor: warned: needs %s\nchy: doctor: 1 problem(s)' "$fake_w")" \
+    "$(printf 'doctor: warned: needs %s\ndoctor: 1 problem(s)' "$fake_w")" \
     'doctor reads the db entry the warning install wrote'
 
 # --- and why reads its marker ---
 run_chy why warned
 assert_rc 0 'why warned'
-assert_eq "$(cat "$OUT")" 'chy: warned: requested' 'marker recorded and surfaced'
+assert_eq "$(cat "$OUT")" 'warned: requested' 'marker recorded and surfaced'
 
 exit 0

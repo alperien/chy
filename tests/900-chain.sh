@@ -39,7 +39,7 @@ sh chy/chy install freetype >"$iout" 2>"$work/install.err" || {
     cat "$iout" "$work/install.err"
     exit 1
 }
-grep -F -x -q 'chy: order: bzip2 zlib libpng freetype' "$iout" || {
+grep -F -x -q -- '-> order bzip2 zlib libpng freetype' "$iout" || {
     echo "missing or wrong order line; stdout was:"
     cat "$iout"
     exit 1

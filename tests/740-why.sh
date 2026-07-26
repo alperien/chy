@@ -1,13 +1,13 @@
 #!/bin/sh
-# why: explain why each named package is installed,
-# to stdout, reading the db only (never recipes). A `requested` marker
-# prints `chy: <name>: requested`; installed dependents print
-# `chy: <name>: required by: <names, byte-sorted, space-separated>`,
+# why: explain why each named package is installed, stdout, db only
+# (never recipes). A `requested` marker prints `<name>: requested`;
+# installed dependents print
+# `<name>: required by: <names, byte-sorted, space-separated>`,
 # byte-for-byte the list the remove guard refuses with; both hold, both
-# lines print, requested first; neither prints the orphan line. Names are
-# processed like list: all of them, in the order given; an invalid or
-# not-installed name errors on stderr and sets exit 1 while the rest
-# still print. Zero names or an unknown flag is usage, exit 2.
+# lines print, requested first; neither means the orphan line. Names
+# process like list: all of them, in the order given; an invalid or
+# not-installed name errors on stderr, exit 1, the rest still print.
+# Zero names or an unknown flag is usage, exit 2.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -29,13 +29,13 @@ assert_not_requested "$CHY_ROOT" lib
 # --- requested only: exactly the one line ---
 run_chy why app
 assert_rc 0 'why app'
-assert_eq "$(cat "$OUT")" 'chy: app: requested' 'exact requested line'
+assert_eq "$(cat "$OUT")" 'app: requested' 'exact requested line'
 assert_empty_file "$ERR" 'why says nothing on stderr for installed names'
 
 # --- required only: dependents byte-sorted, space-separated ---
 run_chy why lib
 assert_rc 0 'why lib'
-assert_eq "$(cat "$OUT")" 'chy: lib: required by: app tool' \
+assert_eq "$(cat "$OUT")" 'lib: required by: app tool' \
     'exact required-by line, dependents byte-sorted'
 assert_empty_file "$ERR"
 
@@ -49,14 +49,14 @@ assert_installed "$CHY_ROOT" lib 1.0 1
 # --- names processed in the order given ---
 run_chy why tool app
 assert_rc 0 'why tool app'
-assert_eq "$(cat "$OUT")" "$(printf 'chy: tool: requested\nchy: app: requested')" \
+assert_eq "$(cat "$OUT")" "$(printf 'tool: requested\napp: requested')" \
     'argument order preserved'
 
 # --- a failing name sets exit 1; the rest still print ---
 run_chy why app nosuch lib
 assert_rc 1 'any bad name forces exit 1'
 assert_eq "$(cat "$OUT")" \
-    "$(printf 'chy: app: requested\nchy: lib: required by: app tool')" \
+    "$(printf 'app: requested\nlib: required by: app tool')" \
     'installed names still print around the missing one'
 assert_eq "$(cat "$ERR")" 'chy: nosuch: error: not installed' \
     'exact not-installed error'
@@ -74,7 +74,7 @@ assert_rc 0 'reinstalling lib by name marks it'
 run_chy why lib
 assert_rc 0 'why lib, now marked'
 assert_eq "$(cat "$OUT")" \
-    "$(printf 'chy: lib: requested\nchy: lib: required by: app tool')" \
+    "$(printf 'lib: requested\nlib: required by: app tool')" \
     'both lines, requested first'
 
 # --- orphan: unmarked, nothing requires it ---
@@ -88,7 +88,7 @@ assert_rc 0 'parent removed, loner left behind'
 run_chy why loner
 assert_rc 0 'why loner'
 assert_eq "$(cat "$OUT")" \
-    'chy: loner: orphan (not requested, nothing requires it)' \
+    'loner: orphan (not requested, nothing requires it)' \
     'exact orphan line'
 assert_empty_file "$ERR"
 
@@ -97,7 +97,7 @@ rm -rf "$CHY_ROOT/recipes"
 run_chy why lib
 assert_rc 0 'why works without recipes'
 assert_eq "$(cat "$OUT")" \
-    "$(printf 'chy: lib: requested\nchy: lib: required by: app tool')" \
+    "$(printf 'lib: requested\nlib: required by: app tool')" \
     'db-only answer unchanged'
 
 # --- zero names / unknown flag: usage to stderr, exit 2 ---

@@ -57,14 +57,14 @@ run_chy doctor
 assert_rc 1 'problems: doctor exits 1'
 {
     if [ "$have_elf" = 1 ]; then
-        printf 'chy: doctor: amess: needs %s\n' "$fake_a"
+        printf 'doctor: amess: needs %s\n' "$fake_a"
     fi
-    printf 'chy: doctor: amess: broken link usr/bin/aa-broke\n'
-    printf 'chy: doctor: amess: missing usr/bin/bb-gone\n'
-    printf 'chy: doctor: amess: foreign usr/bin/cc-alien\n'
-    printf 'chy: doctor: amess: missing usr/bin/dd-gone\n'
-    printf 'chy: doctor: zmess: missing usr/bin/zz-gone\n'
-    printf 'chy: doctor: %s problem(s)\n' "$((4 + have_elf + 1))"
+    printf 'doctor: amess: broken link usr/bin/aa-broke\n'
+    printf 'doctor: amess: missing usr/bin/bb-gone\n'
+    printf 'doctor: amess: foreign usr/bin/cc-alien\n'
+    printf 'doctor: amess: missing usr/bin/dd-gone\n'
+    printf 'doctor: zmess: missing usr/bin/zz-gone\n'
+    printf 'doctor: %s problem(s)\n' "$((4 + have_elf + 1))"
 } >"$TMPD/want"
 assert_eq "$(cat "$OUT")" "$(cat "$TMPD/want")" \
     'exact report: name-ordered blocks, needs first, manifest-order walks'

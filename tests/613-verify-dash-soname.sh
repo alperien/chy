@@ -41,7 +41,7 @@ assert_eq "$(cat "$ERR")" "chy: dashy: warning: needs $fake_d" \
 
 run_chy doctor
 assert_rc 1 'dash soname: doctor exits 1'
-want=$(printf 'chy: doctor: dashy: needs %s\nchy: doctor: 1 problem(s)' "$fake_d")
+want=$(printf 'doctor: dashy: needs %s\ndoctor: 1 problem(s)' "$fake_d")
 assert_eq "$(cat "$OUT")" "$want" 'the doctor finding carries the dash soname'
 assert_empty_file "$ERR" 'doctor stderr clean: no grep option error leaked'
 

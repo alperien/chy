@@ -79,7 +79,7 @@ run_chy_root "$rc" upgrade
 assert_rc 0 'bare upgrade skips the recipe-gone package'
 assert_eq "$(cat "$ERR")" 'chy: gone: warning: no recipe' 'exact warning'
 assert_order_first 'okpkg'
-file_has_line "$OUT" 'chy: okpkg: installed 2.0 1'
+file_has_line "$OUT" '+ okpkg 2.0_1'
 assert_installed "$rc" okpkg 2.0 1
 [ -f "$TMPD/built-okpkg" ] || fail 'okpkg must rebuild on bare upgrade'
 assert_installed "$rc" gone 1.0 1
@@ -99,12 +99,12 @@ mkpkg "$rd" libp 2.0 usr/bin/libp-tool
 run_chy_root "$rd" upgrade libp
 assert_rc 0 'named upgrade of the dependency'
 assert_order 'libp'
-file_has_line "$OUT" 'chy: libp: installed 2.0 1'
+file_has_line "$OUT" '+ libp 2.0_1'
 assert_installed "$rd" libp 2.0 1
 assert_not_requested "$rd" libp
 run_chy_root "$rd" why libp
 assert_rc 0 'why libp'
-assert_eq "$(cat "$OUT")" 'chy: libp: required by: appq' \
+assert_eq "$(cat "$OUT")" 'libp: required by: appq' \
     'an upgraded dependency shows no requested line'
 
 # --- (e)+(f) requested survives; a new depends line is pulled in ---
@@ -123,11 +123,11 @@ assert_not_requested "$rd" newdep
 assert_not_requested "$rd" libp
 run_chy_root "$rd" why appq
 assert_rc 0 'why appq'
-assert_eq "$(cat "$OUT")" 'chy: appq: requested' \
+assert_eq "$(cat "$OUT")" 'appq: requested' \
     'an upgraded requested package stays requested'
 run_chy_root "$rd" why newdep
 assert_rc 0 'why newdep'
-assert_eq "$(cat "$OUT")" 'chy: newdep: required by: appq' \
+assert_eq "$(cat "$OUT")" 'newdep: required by: appq' \
     'the pulled-in dependency arrives unmarked'
 
 exit 0

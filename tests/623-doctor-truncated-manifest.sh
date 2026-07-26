@@ -33,7 +33,7 @@ two_file_pkg "$CHY_ROOT"
 rm "$CHY_ROOT/usr/bin/zz-tool"
 run_chy doctor
 assert_rc 1 'truncated manifest: missing path still found'
-want=$(printf 'chy: doctor: twofile: missing usr/bin/zz-tool\nchy: doctor: 1 problem(s)')
+want=$(printf 'doctor: twofile: missing usr/bin/zz-tool\ndoctor: 1 problem(s)')
 assert_eq "$(cat "$OUT")" "$want" 'check 3 walks the final unterminated line'
 
 # --- the unterminated last line, store file gone: broken link found ---
@@ -43,7 +43,7 @@ two_file_pkg "$rb"
 rm "$rb/store/twofile-1.0/usr/bin/zz-tool"
 run_chy_root "$rb" doctor
 assert_rc 1 'truncated manifest: broken link still found'
-want=$(printf 'chy: doctor: twofile: broken link usr/bin/zz-tool\nchy: doctor: 1 problem(s)')
+want=$(printf 'doctor: twofile: broken link usr/bin/zz-tool\ndoctor: 1 problem(s)')
 assert_eq "$(cat "$OUT")" "$want" 'check 2 walks the final unterminated line too'
 
 exit 0

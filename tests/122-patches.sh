@@ -50,7 +50,7 @@ EOF
 
 run_chy install patched
 assert_rc 0 'both patches apply in byte order of filename'
-file_has_line "$OUT" 'chy: patched: installed 2.2 1'
+file_has_line "$OUT" '+ patched 2.2_1'
 assert_eq "$(cat "$CHY_ROOT/usr/share/patched/data.txt")" 'line-three' \
     'patched content visible through the farm'
 

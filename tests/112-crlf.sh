@@ -46,7 +46,7 @@ mkpkg "$CHY_ROOT" crver '2.1 3' usr/bin/crver-tool
 printf '2.1 3%s\n' "$cr" >"$CHY_ROOT/recipes/crver/version"
 run_chy install crver
 assert_rc 0 'CRLF version file is accepted'
-file_has_line "$OUT" 'chy: crver: installed 2.1 3'
+file_has_line "$OUT" '+ crver 2.1_3'
 assert_installed "$CHY_ROOT" crver 2.1 3
 [ -d "$CHY_ROOT/store/crver-2.1" ] || fail 'store entry is not store/crver-2.1'
 assert_link "$CHY_ROOT/store/crver" 'crver-2.1'
@@ -61,7 +61,7 @@ mkpkg "$CHY_ROOT" crkind 1.0 usr/bin/crkind-tool
 printf 'binary%s\n' "$cr" >"$CHY_ROOT/recipes/crkind/kind"
 run_chy install crkind
 assert_rc 0 'kind "binary" with a CRLF ending is accepted'
-file_has_line "$OUT" 'chy: crkind: installed 1.0 1'
+file_has_line "$OUT" '+ crkind 1.0_1'
 assert_installed "$CHY_ROOT" crkind 1.0 1
 assert_eq "$(count_matches 'unsupported kind' "$ERR")" 0 'kind was not rejected'
 

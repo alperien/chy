@@ -50,7 +50,7 @@ mk_needy_elf "$TMPD/needy-elf-b" "$fake_b"
 elf_install_pkg needy "$TMPD/needy-elf-a"
 run_chy install needy
 assert_rc 0 'needs warnings never affect exit status'
-file_has_line "$OUT" 'chy: needy: installed 1.0 1'
+file_has_line "$OUT" '+ needy 1.0_1'
 assert_eq "$(cat "$ERR")" "chy: needy: warning: needs $fake_a" \
     'stderr is exactly the one bare needs line (map absent)'
 assert_installed "$CHY_ROOT" needy 1.0 1

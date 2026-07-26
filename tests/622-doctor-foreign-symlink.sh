@@ -29,9 +29,9 @@ ln -s ../../store/other/usr/lib/other-tool "$CHY_ROOT/usr/bin/fb-tool"
 run_chy doctor
 assert_rc 1 'foreign symlinks: doctor exits 1'
 want=$(printf '%s\n%s\n%s' \
-    'chy: doctor: forn: foreign usr/bin/fa-tool' \
-    'chy: doctor: forn: foreign usr/bin/fb-tool' \
-    'chy: doctor: 2 problem(s)')
+    'doctor: forn: foreign usr/bin/fa-tool' \
+    'doctor: forn: foreign usr/bin/fb-tool' \
+    'doctor: 2 problem(s)')
 assert_eq "$(cat "$OUT")" "$want" \
     'one foreign finding per symlink, other stays clean, count is 2'
 assert_empty_file "$ERR" 'doctor says nothing on stderr'

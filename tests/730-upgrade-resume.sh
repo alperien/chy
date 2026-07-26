@@ -87,7 +87,7 @@ assert_order_first 'libfake app'
 assert_empty_file "$ERR" 'baseline: libfake.so.1 resolves through the farm'
 run_chy doctor
 assert_rc 0 'baseline doctor'
-assert_eq "$(cat "$OUT")" 'chy: doctor: clean' 'the baseline root is clean'
+assert_eq "$(cat "$OUT")" 'doctor: clean' 'the baseline root is clean'
 
 # --- the interruption: libfake converges to v2 by plain install, which
 # warns the bump and stops there (install never rebuilds
@@ -96,10 +96,10 @@ mk_libfake 2.0 libfake.so.2.0.0 libfake.so.2
 rm -f "$TMPD/built-app"
 run_chy install libfake
 assert_rc 0 'libfake 2.0 installs'
-file_has_line "$OUT" 'chy: libfake: installed 2.0 1'
+file_has_line "$OUT" '+ libfake 2.0_1'
 assert_eq "$(cat "$ERR")" 'chy: libfake: warning: soname bump: libfake.so.1' \
     'install warns the bump, alone on stderr'
-assert_eq "$(count_matches '^chy: rebuild: ' "$OUT")" 0 'install never rebuilds dependents'
+assert_eq "$(count_matches '^-> rebuild ' "$OUT")" 0 'install never rebuilds dependents'
 assert_absent "$TMPD/built-app"
 assert_installed "$CHY_ROOT" libfake 2.0 1
 assert_installed "$CHY_ROOT" app 1.0 1
@@ -110,7 +110,7 @@ assert_absent "$CHY_ROOT/usr/lib/libfake.so.1"
 # --- doctor names the dangler precisely ---
 run_chy doctor
 assert_rc 1 'a dangling dependent is a problem'
-want=$(printf 'chy: doctor: app: needs libfake.so.1\nchy: doctor: 1 problem(s)')
+want=$(printf 'doctor: app: needs libfake.so.1\ndoctor: 1 problem(s)')
 assert_eq "$(cat "$OUT")" "$want" 'exactly the dangling NEEDED, named'
 
 # --- re-run upgrade: the library is present at a different version, so
@@ -118,14 +118,14 @@ assert_eq "$(cat "$OUT")" "$want" 'exactly the dangling NEEDED, named'
 rm -f "$TMPD/built-app"
 run_chy upgrade
 assert_rc 0 'upgrade repairs the interruption'
-file_has_line "$OUT" 'chy: app: installed 1.0 1'
+file_has_line "$OUT" '+ app 1.0_1'
 [ -f "$TMPD/built-app" ] || fail 'the app build must run for the repair'
-assert_eq "$(count_matches '^chy: libfake: installed ' "$OUT")" 0 'libfake is current: untouched'
+assert_eq "$(count_matches '^+ libfake ' "$OUT")" 0 'libfake is current: untouched'
 assert_installed "$CHY_ROOT" app 1.0 1
 
 run_chy doctor
 assert_rc 0 'doctor after the repair'
-assert_eq "$(cat "$OUT")" 'chy: doctor: clean' 'relinking resolved the need'
+assert_eq "$(cat "$OUT")" 'doctor: clean' 'relinking resolved the need'
 
 rm -f "$TMPD/built-app"
 run_chy upgrade
@@ -160,7 +160,7 @@ assert_absent "$TMPD/built-drift"
 
 run_chy_root "$rd" doctor
 assert_rc 1 'doctor still owns the drift report'
-want=$(printf 'chy: doctor: drift: needs %s\nchy: doctor: 1 problem(s)' "$fake_d")
+want=$(printf 'doctor: drift: needs %s\ndoctor: 1 problem(s)' "$fake_d")
 assert_eq "$(cat "$OUT")" "$want" 'the drift stays visible'
 
 exit 0

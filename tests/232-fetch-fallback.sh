@@ -69,7 +69,7 @@ EOF
 
 run_min install wf
 assert_rc 0 'wget branch: dead primary, file:// mirror rescues'
-file_has_line "$OUT" 'chy: wf: installed 1.0 1'
+file_has_line "$OUT" '+ wf 1.0_1'
 assert_installed "$CHY_ROOT" wf 1.0 1
 assert_eq "$(sha_of "$CHY_ROOT/cache/wf-src.txt")" \
     "$(sha_of "$TMPD/web/wf-src.txt")" 'cache keyed by the first URL basename'
@@ -98,7 +98,7 @@ log0=$(cat "$TMPD/wget.log")
 
 run_min install ch
 assert_rc 0 'a verified cache hit satisfies a line of dead URLs'
-file_has_line "$OUT" 'chy: ch: installed 2.0 1'
+file_has_line "$OUT" '+ ch 2.0_1'
 assert_installed "$CHY_ROOT" ch 2.0 1
 assert_eq "$(sha_of "$CHY_ROOT/cache/ch-src.txt")" \
     "$(sha_of "$TMPD/ch-src.txt")" 'cache file kept'

@@ -40,9 +40,9 @@ assert_eq "$(cat "$ERR")" "chy: dangler: warning: needs $fake_s" \
 
 run_chy doctor
 assert_rc 1 'dangling case: doctor exits 1'
-want=$(printf 'chy: doctor: dangler: needs %s
-chy: doctor: dangler: broken link usr/lib/%s
-chy: doctor: 2 problem(s)' "$fake_s" "$fake_s")
+want=$(printf 'doctor: dangler: needs %s
+doctor: dangler: broken link usr/lib/%s
+doctor: 2 problem(s)' "$fake_s" "$fake_s")
 assert_eq "$(cat "$OUT")" "$want" 'the needs finding plus the broken owned link'
 
 # --- control: same needy ELF, but usr/lib/<soname> is a resolvable
@@ -65,7 +65,7 @@ assert_empty_file "$ERR" 'a resolvable self-shipped soname warns nothing'
 
 run_chy_root "$rb" doctor
 assert_rc 0 'control root is clean'
-assert_eq "$(cat "$OUT")" 'chy: doctor: clean' 'control: exactly the clean line'
+assert_eq "$(cat "$OUT")" 'doctor: clean' 'control: exactly the clean line'
 assert_empty_file "$ERR" 'control doctor: stderr empty'
 
 exit 0

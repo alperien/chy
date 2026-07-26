@@ -32,10 +32,10 @@ run_chy install rr
 assert_rc 0 'rr install'
 run_chy remove rr
 assert_rc 0 'remove exits 0'
-file_has_line "$OUT" 'chy: rr: removed 1.5 2'
-if grep -q -v '^chy: rr: ' "$OUT"; then
+file_has_line "$OUT" '- rr 1.5_2'
+if grep -v '^-> rr ' "$OUT" | grep -q -v '^- rr '; then
     cat "$OUT" >&2
-    fail 'stdout carries a line outside the chy: rr: grammar'
+    fail 'stdout carries a line outside the -> rr / - rr grammar'
 fi
 assert_empty_file "$ERR" 'clean removal warns about nothing'
 assert_absent "$CHY_ROOT/usr/bin/rr-tool"
@@ -56,7 +56,7 @@ rm "$CHY_ROOT/usr/bin/w2"
 printf 'user data\n' >"$CHY_ROOT/usr/bin/w2"
 run_chy remove rw
 assert_rc 0 'warnings never affect exit status'
-file_has_line "$OUT" 'chy: rw: removed 1.0 1'
+file_has_line "$OUT" '- rw 1.0_1'
 assert_eq "$(count_matches '^chy: rw: warning: ' "$ERR")" '2' \
     'one warning per missing or replaced path'
 assert_eq "$(cat "$CHY_ROOT/usr/bin/w2")" 'user data' 'replaced file left alone'
@@ -81,8 +81,8 @@ run_chy install ra
 assert_rc 0 'ra reinstall'
 run_chy remove ra rb
 assert_rc 0 'remove both in one run'
-assert_eq "$(grep '^chy: r[ab]: removed ' "$OUT")" \
-    "$(printf 'chy: ra: removed 1.0 1\nchy: rb: removed 1.0 1')" \
+assert_eq "$(grep '^- r[ab] ' "$OUT")" \
+    "$(printf -- '- ra 1.0_1\n- rb 1.0_1')" \
     'completion lines exact and in argument order'
 assert_absent "$CHY_ROOT/usr/libexec"
 [ -d "$CHY_ROOT/usr" ] || fail 'top-level usr/ must survive full pruning'

@@ -17,7 +17,7 @@ printf 'binary\n' >"$CHY_ROOT/recipes/kbin/kind"
 run_chy install kbin
 assert_rc 0 'kind=binary is accepted'
 assert_order_first 'kbin'
-file_has_line "$OUT" 'chy: kbin: installed 2.1 3'
+file_has_line "$OUT" '+ kbin 2.1_3'
 assert_empty_file "$ERR" 'script-only binary-kind install is silent on stderr'
 assert_installed "$CHY_ROOT" kbin 2.1 3
 assert_link "$CHY_ROOT/store/kbin" 'kbin-2.1'
@@ -62,7 +62,7 @@ EOF
 
 run_chy install blaunch
 assert_rc 0 'binary-kind launcher package installs'
-file_has_line "$OUT" 'chy: blaunch: installed 3.0 1'
+file_has_line "$OUT" '+ blaunch 3.0_1'
 assert_link "$CHY_ROOT/usr/bin/blaunch" '../../store/blaunch/usr/bin/blaunch'
 
 # no prior LD_LIBRARY_PATH: the program sees exactly the farm lib dir

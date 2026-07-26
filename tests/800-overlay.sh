@@ -57,7 +57,7 @@ mkovl "$CHY_ROOT" foo 2.0 usr/bin/foo-tool
 run_chy install foo
 assert_rc 0 'foo installs from the overlay'
 assert_order_first 'foo'
-file_has_line "$OUT" 'chy: foo: installed 2.0 1'
+file_has_line "$OUT" '+ foo 2.0_1'
 assert_empty_file "$ERR" 'clean overlay install is silent on stderr'
 assert_installed "$CHY_ROOT" foo 2.0 1
 assert_link "$CHY_ROOT/store/foo" 'foo-2.0'
@@ -77,7 +77,7 @@ mkovl "$CHY_ROOT" whole 2.0 usr/bin/whole-tool
 run_chy install whole
 assert_rc 0 'whole installs from the overlay alone'
 assert_order_first 'whole'
-file_has_line "$OUT" 'chy: whole: installed 2.0 1'
+file_has_line "$OUT" '+ whole 2.0_1'
 assert_installed "$CHY_ROOT" whole 2.0 1
 assert_not_installed "$CHY_ROOT" shadep
 
@@ -103,8 +103,8 @@ assert_empty_file "$ERR"
 run_chy upgrade
 assert_rc 0 'upgrade converges foo to the corpus'
 assert_order_first 'foo'
-file_has_line "$OUT" 'chy: foo: installed 3.0 1'
-assert_eq "$(count_matches '^chy: whole: installed ' "$OUT")" 0 \
+file_has_line "$OUT" '+ foo 3.0_1'
+assert_eq "$(count_matches '^+ whole ' "$OUT")" 0 \
     'whole is pinned: upgrade never touches it'
 assert_empty_file "$ERR"
 assert_installed "$CHY_ROOT" foo 3.0 1
@@ -140,7 +140,7 @@ assert_requested "$CHY_ROOT" baz
 run_chy install bar
 assert_rc 0 'overlay-only bar installs by name'
 assert_order_first 'bar'
-file_has_line "$OUT" 'chy: bar: installed 1.0 1'
+file_has_line "$OUT" '+ bar 1.0_1'
 
 run_chy outdated
 assert_rc 0 'outdated with overlay-only packages installed'
@@ -172,7 +172,7 @@ run_chy install qux
 assert_rc 1 'an invalid overlay fails the install'
 file_matches "$ERR" '^chy: qux: error: '
 file_has "$ERR" 'checksums' # the error wording names the culprit file
-assert_eq "$(count_matches '^chy: qux: installed ' "$OUT")" 0 'no completion line'
+assert_eq "$(count_matches '^+ qux ' "$OUT")" 0 'no completion line'
 assert_not_installed "$CHY_ROOT" qux
 assert_no_store "$CHY_ROOT" qux 2.0
 assert_absent "$CHY_ROOT/store/qux-1.0"

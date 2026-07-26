@@ -66,7 +66,7 @@ assert_rc 0 'mkuser pulls its build tool'
 assert_order 'mklib mkuser'
 run_chy remove mklib
 assert_rc 0 'a build-only dependency is removable'
-file_has_line "$OUT" 'chy: mklib: removed 1.0 1'
+file_has_line "$OUT" '- mklib 1.0_1'
 assert_not_installed "$CHY_ROOT" mklib
 assert_installed "$CHY_ROOT" mkuser 1.0 1
 

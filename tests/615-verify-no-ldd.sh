@@ -27,7 +27,7 @@ fi
 mkpkg "$CHY_ROOT" quiet 1.0 usr/bin/quiet-tool
 run env "PATH=$NOLDD" sh "$CHY" install quiet
 assert_rc 0 'no ldd: install still succeeds'
-file_has_line "$OUT" 'chy: quiet: installed 1.0 1'
+file_has_line "$OUT" '+ quiet 1.0_1'
 assert_eq "$(cat "$ERR")" \
     'chy: quiet: warning: ldd unavailable; runtime verification skipped' \
     'stderr is exactly the skip warning'
@@ -50,7 +50,7 @@ mkpkg "$rn" needy 1.0
 
 run env "PATH=$NOLDD" "CHY_ROOT=$rn" sh "$CHY" install needy
 assert_rc 0 'no ldd: needy install still succeeds'
-file_has_line "$OUT" 'chy: needy: installed 1.0 1'
+file_has_line "$OUT" '+ needy 1.0_1'
 assert_eq "$(cat "$ERR")" \
     'chy: needy: warning: ldd unavailable; runtime verification skipped' \
     'the scan is skipped whole: no needs warning without ldd'
@@ -60,7 +60,7 @@ assert_installed "$rn" needy 1.0 1
 # package really was needy, only the missing tool silenced step 11
 run_chy_root "$rn" doctor
 assert_rc 1 'ldd restored: the debt is visible'
-want=$(printf 'chy: doctor: needy: needs %s\nchy: doctor: 1 problem(s)' "$fake_s")
+want=$(printf 'doctor: needy: needs %s\ndoctor: 1 problem(s)' "$fake_s")
 assert_eq "$(cat "$OUT")" "$want" 'doctor reports the soname install skipped'
 
 exit 0

@@ -45,7 +45,7 @@ if ! sh chy/chy install firefox > "$work/out" 2> "$work/err"; then
     echo "firefox install FAILED, stdout:"; tail -n 30 "$work/out"
     echo "stderr:"; tail -n 30 "$work/err"; exit 1
 fi
-grep -q '^chy: firefox: installed 153.0.1 1$' "$work/out" || {
+grep -q '^+ firefox 153.0.1_1$' "$work/out" || {
     echo "no completion line"; tail -5 "$work/out"; exit 1; }
 # runtime verification ran; any missing soname is a host gap, reported
 grep '^chy: firefox: warning: needs' "$work/err" || echo "(runtime verification clean)"

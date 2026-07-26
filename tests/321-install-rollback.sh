@@ -62,7 +62,7 @@ assert_rc 1 'a failed farm link fails the install'
 assert_eq "$(cat "$ERR")" \
     'chy: lnfresh: error: cannot link the farm; rolled back' \
     'exact rollback line, nothing else on stderr'
-file_has_line "$OUT" 'chy: lnfresh: link lnfresh-1.0'
+file_has_line "$OUT" '-> lnfresh link lnfresh-1.0'
 assert_not_installed "$CHY_ROOT" lnfresh
 assert_no_store "$CHY_ROOT" lnfresh 1.0
 assert_absent "$CHY_ROOT/usr/bin/aaa"
@@ -110,6 +110,6 @@ assert_rc 0
 assert_eq "$(cat "$OUT")" 'lnup 1.0 1' 'list shows exactly the 1.0 install'
 run_chy_root "$up" doctor
 assert_rc 0 'doctor finds nothing after the rollback'
-file_has_line "$OUT" 'chy: doctor: clean'
+file_has_line "$OUT" 'doctor: clean'
 
 exit 0

@@ -48,9 +48,9 @@ assert_rc 0 'the bump warning never affects exit status'
 assert_eq "$(cat "$ERR")" 'chy: libfake: warning: soname bump: libfake.so.1' \
     'exactly the vanished soname link warns; .so.1.0.0 and .so do not'
 assert_order 'libfake'
-file_has_line "$OUT" 'chy: libfake: installed 2.0 1'
+file_has_line "$OUT" '+ libfake 2.0_1'
 assert_eq "$(installed_seq)" 'libfake' 'only libfake rebuilds'
-if grep -q '^chy: rebuild:' "$OUT"; then
+if grep -q '^-> rebuild' "$OUT"; then
     dump_streams
     fail 'plain install must never announce a rebuild set'
 fi
