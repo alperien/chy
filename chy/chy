@@ -9,7 +9,6 @@
 # state. usage() lists the verbs.
 
 CHY_VERSION=0.5.0
-set -u
 
 CR=$(printf '\r') # to strip from lines of hand-edited (DOS) recipe files
 
@@ -21,20 +20,14 @@ CR=$(printf '\r') # to strip from lines of hand-edited (DOS) recipe files
 # the Unix "chy: <name>: warning|error: <what>" grammar.
 # On a terminal, with NO_COLOR unset or empty, only the sigils are
 # tinted; piped or redirected stdout is byte-identical to the plain
-# grammar, and stderr is never colored.
-
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-    C_ARROW=$(printf '\033[34m') C_PLUS=$(printf '\033[32m')
-    C_MINUS=$(printf '\033[31m') C_OFF=$(printf '\033[0m')
-else
-    C_ARROW='' C_PLUS='' C_MINUS='' C_OFF=''
-fi
+# grammar, and stderr is never colored. main() sets the palette at startup.
 
 step()    { printf '%s->%s %s %s\n' "$C_ARROW" "$C_OFF" "$1" "$2"; }
 added()   { printf '%s+%s %s %s_%s\n' "$C_PLUS" "$C_OFF" "$1" "$2" "$3"; }
 removed() { printf '%s-%s %s %s_%s\n' "$C_MINUS" "$C_OFF" "$1" "$2" "$3"; }
-warn() { printf 'chy: %s: warning: %s\n' "$1" "$2" >&2; }
-err() { printf 'chy: %s: error: %s\n' "$1" "$2" >&2; }
+msg()  { printf 'chy: %s: %s: %s\n' "$1" "$2" "$3" >&2; }
+warn() { msg "$1" warning "$2"; }
+err()  { msg "$1" error "$2"; }
 fail() { err "$1" "$2"; exit 1; }
 
 usage() {
@@ -57,6 +50,14 @@ usage:
 
 \$CHY_ROOT selects the root (default: \$HOME/.chy).
 EOF
+}
+
+# A verb that takes no flags rejects any leading-dash argument as an unknown
+# flag: usage on stderr, exit 2.
+no_opts() { # no_opts <args>
+    for no_a in "$@"; do
+        case $no_a in -*) usage >&2; exit 2 ;; esac
+    done
 }
 
 # validation
@@ -702,10 +703,11 @@ scan_needs() { # scan_needs <store entry dir>
     sn_own=$(find -L "$1" -type f -name '*.so*' 2>/dev/null |
         while IFS= read -r sn_o; do printf '%s\n' "${sn_o##*/}"; done |
         LC_ALL=C sort -u)
+    # The shell reads the ELF magic itself, so there's no per-file spawn.
     find "$1" -type f -print | while IFS= read -r sn_f; do
-        sn_head=                        # the shell itself reads the magic:
-        { IFS= read -r sn_head <"$sn_f"; } 2>/dev/null || : # no per-file
-        case $sn_head in "$ELF_MAGIC"*) ;; *) continue ;; esac      # spawn
+        sn_head=
+        { IFS= read -r sn_head <"$sn_f"; } 2>/dev/null || :
+        case $sn_head in "$ELF_MAGIC"*) ;; *) continue ;; esac
         LD_LIBRARY_PATH="$CHY_ROOT/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
             ldd "$sn_f" 2>&1 || :
     done | LC_ALL=C awk '
@@ -1093,9 +1095,9 @@ cmd_install() {
     done
     [ -n "$ci_names" ] || exit 0        # everything provided: no order line
 
-    ORDER=$ci_names                     # --no-deps: steps 2-5 skipped,
-    [ "$ci_nodeps" -eq 1 ] ||           # the order as given
-        resolve "$ci_names"
+    # --no-deps skips resolution (steps 2-5) and installs in the given order.
+    ORDER=$ci_names
+    [ "$ci_nodeps" -eq 1 ] || resolve "$ci_names"
 
     step order "$ORDER"
     REST=$ORDER
@@ -1178,9 +1180,7 @@ cmd_remove() {
     cr_casc=0
     if [ "${1-}" = -r ]; then cr_casc=1; shift; fi
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
-    for cr_n in "$@"; do
-        case $cr_n in -*) usage >&2; exit 2 ;; esac
-    done
+    no_opts "$@"
     if [ "$cr_casc" -eq 1 ]; then cascade_remove "$@"; return 0; fi
     for cr_n in "$@"; do
         valid_name "$cr_n" || fail "$cr_n" "invalid package name"
@@ -1205,9 +1205,7 @@ cmd_provided() {
 }
 
 cmd_list() {
-    for cl_n in "$@"; do
-        case $cl_n in -*) usage >&2; exit 2 ;; esac
-    done
+    no_opts "$@"
     if [ "$#" -eq 0 ]; then
         for cl_d in "$CHY_ROOT/db/installed/"*; do
             [ -f "$cl_d/version" ] || continue
@@ -1274,9 +1272,7 @@ cmd_outdated() { # read-only, like doctor; a report, so exit 0 always
 # required-by both print when both hold, requested first.
 cmd_why() {
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
-    for cw_n in "$@"; do
-        case $cw_n in -*) usage >&2; exit 2 ;; esac
-    done
+    no_opts "$@"
     cw_bad=0
     for cw_n in "$@"; do
         if ! valid_name "$cw_n"; then
@@ -1449,11 +1445,13 @@ rebuild_set() { # rebuild_set <bumped-set> <done-set>
             rb_seen="$rb_seen$rb_d "
             rb_q="$rb_q${rb_q:+ }$rb_d"    # walk through excluded ones too
             in_set "$rb_d" "$2" && continue
-            if in_set "$rb_d" "$PROVIDED"; then     # unbuildable dependents:
+            # An unbuildable dependent is warned and skipped; doctor will name
+            # the soname it still needs.
+            if in_set "$rb_d" "$PROVIDED"; then
                 warn "$rb_d" 'provided by the host'
             elif [ ! -d "$(recipe_dir "$rb_d")" ]; then
-                warn "$rb_d" 'no recipe'            # doctor will name the
-            else                                    # soname they still need
+                warn "$rb_d" 'no recipe'
+            else
                 rb_new="$rb_new$rb_d "
             fi
         done
@@ -1500,9 +1498,7 @@ upgrade_run() { # upgrade_run <ordered names>
 }
 
 cmd_upgrade() {
-    for cu_n in "$@"; do
-        case $cu_n in -*) usage >&2; exit 2 ;; esac
-    done
+    no_opts "$@"
     PROVIDED=" $(provided_names | tr '\n' ' ')"
 
     CU_T=' ' cu_names=''
@@ -1593,19 +1589,33 @@ EOF
 }
 
 # dispatch
-check_root
+# Options, the color palette, root validation, then the verb. Kept in main()
+# so the file is source-able (a test can load the functions without running a
+# command), with main "$@" as the last line.
+main() {
+    set -u
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        C_ARROW=$(printf '\033[34m') C_PLUS=$(printf '\033[32m')
+        C_MINUS=$(printf '\033[31m') C_OFF=$(printf '\033[0m')
+    else
+        C_ARROW='' C_PLUS='' C_MINUS='' C_OFF=''
+    fi
+    check_root
 
-case ${1-} in
-    version)      shift; [ "$#" -eq 0 ] || { usage >&2; exit 2; }
-                  printf '%s\n' "$CHY_VERSION" ;;
-    ''|-h|--help) usage ;;
-    install)      shift; cmd_install "$@" ;;
-    upgrade)      shift; cmd_upgrade "$@" ;;
-    remove)       shift; cmd_remove "$@" ;;
-    list)         shift; cmd_list "$@" ;;
-    outdated)     shift; cmd_outdated "$@" ;;
-    why)          shift; cmd_why "$@" ;;
-    provided)     shift; cmd_provided "$@" ;;
-    doctor)       shift; cmd_doctor "$@" ;;
-    *)            usage >&2; exit 2 ;;
-esac
+    case ${1-} in
+        version)      shift; [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+                      printf '%s\n' "$CHY_VERSION" ;;
+        ''|-h|--help) usage ;;
+        install)      shift; cmd_install "$@" ;;
+        upgrade)      shift; cmd_upgrade "$@" ;;
+        remove)       shift; cmd_remove "$@" ;;
+        list)         shift; cmd_list "$@" ;;
+        outdated)     shift; cmd_outdated "$@" ;;
+        why)          shift; cmd_why "$@" ;;
+        provided)     shift; cmd_provided "$@" ;;
+        doctor)       shift; cmd_doctor "$@" ;;
+        *)            usage >&2; exit 2 ;;
+    esac
+}
+
+main "$@"
