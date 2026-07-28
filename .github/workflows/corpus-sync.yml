@@ -1,5 +1,5 @@
 # Scheduled corpus sync. Daily: snapshot Void, translate
-# the corpus.set, and push the diff to the bot-only corpus repo; a refusal
+# the default.set, and push the diff to the bot-only corpus repo; a refusal
 # opens an issue here instead of committing. The logic lives in ci/*.sh so
 # it is testable offline (tests/810-814); this file only wires it up.
 #
@@ -58,10 +58,10 @@ jobs:
       - name: snapshot Void (the only networked step)
         env:
           GITHUB_TOKEN: ${{ github.token }}   # authed API, for the rate limit
-        run: python3 translator/chytrans snapshot --out snap $(grep -v '^#' corpus.set)
+        run: python3 translator/chytrans snapshot --out snap $(grep -v '^#' default.set)
 
       - name: translate and decide (offline, deterministic)
-        run: sh ci/corpus-sync.sh --snapshot snap --corpus corpus --set corpus.set --decisions decisions --translator .
+        run: sh ci/corpus-sync.sh --snapshot snap --corpus corpus --set default.set --decisions decisions --translator .
 
       - name: show the decision
         if: always()
