@@ -580,42 +580,53 @@ relink_prev() { # re-link the previous install's paths this install clobbered
     done <"$rp_m"
 }
 
-# The soname set of a path list: basenames exactly
-# one component under usr/lib/ or lib/ matching *.so or *.so.*,
-# de-duplicated, minus every name that a different *.so.* name in the
-# set plus "." prefixes, so the real file libz.so.1.2.3 falls away in
-# favour of the soname link libz.so.1 that backs it. Symlinks count
-# like files: the loader resolves a NEEDED string by name in the farm.
-soname_set() { # stdin: paths, one per line; stdout: the set, byte-sorted
+# The soname set of an installed tree: the names a dependent resolves at
+# runtime. A soname is a symlink under usr/lib/ or lib/ (one path component,
+# matching *.so or *.so.*); the real library file it points to is an
+# implementation detail whose exact version must not count, so it is dropped
+# when a soname link backs it. A real *.so file that no such link points to
+# stands on its own and is kept. Reading link targets is why this needs the
+# tree rather than just the name list: no name-only rule can tell a compat
+# soname like libbz2.so.1.0 (a real, still-NEEDED name) from the backing file
+# libz.so.1.2.3 that a soname link supersedes.
+soname_set() { # soname_set <store root>: stdin = farm-relative paths
+    ss_scan=$CHY_ROOT/build/soname-scan
+    : >"$ss_scan"
+    while IFS= read -r ss_p || [ -n "$ss_p" ]; do
+        case $ss_p in
+            usr/lib/*) ss_b=${ss_p#usr/lib/} ;;
+            lib/*)     ss_b=${ss_p#lib/} ;;
+            *) continue ;;
+        esac
+        case $ss_b in */*) continue ;; esac             # one component only
+        case $ss_b in *.so|*.so.*) ;; *) continue ;; esac
+        ss_f=$1/$ss_p
+        if [ -L "$ss_f" ]; then
+            ss_t=$(readlink "$ss_f")
+            printf 'l %s %s\n' "$ss_b" "${ss_t##*/}" >>"$ss_scan"
+        elif [ -f "$ss_f" ]; then
+            printf 'f %s\n' "$ss_b" >>"$ss_scan"
+        fi
+    done
     LC_ALL=C awk '
-        {
-            b = $0
-            if (sub(/^usr\/lib\//, "", b) == 0 && sub(/^lib\//, "", b) == 0)
-                next
-            if (index(b, "/") != 0) next
-            if (b !~ /\.so$/ && b !~ /\.so\./) next
-            set[b] = 1
-        }
+        $1 == "l" { sym[$2] = 1; backed[$3] = 1; next }
+        $1 == "f" { file[$2] = 1 }
         END {
-            for (b in set) {
-                drop = 0
-                for (t in set)
-                    if (t != b && t ~ /\.so\./ && index(b, t ".") == 1)
-                        drop = 1
-                if (!drop) print b
-            }
+            for (n in sym)  print n
+            for (n in file) if (!(n in backed)) print n
         }
-    ' | LC_ALL=C sort
+    ' "$ss_scan" | LC_ALL=C sort -u
 }
 
-retire_prev() { # retire_prev <name> <prev version>: drop stale links, old store, old db
+retire_prev() { # retire_prev <name> <prev version> <new store dir>
     rp_m=$CHY_ROOT/db/installed/$1/manifest
     if [ -f "$rp_m" ]; then
-        # A soname the old manifest served that the new file list does
-        # not is a bump. Warn on every reinstall;
-        # record the name so cmd_upgrade rebuilds the dependents.
-        soname_set <"$rp_m" >"$CHY_ROOT/build/sos-old"
-        soname_set <"$LIST" >"$CHY_ROOT/build/sos-new"
+        # A soname the old tree provided and the new one doesn't is a bump.
+        # Warn on every reinstall; record the name so cmd_upgrade rebuilds
+        # the dependents. Both trees are still on disk here (the old store
+        # dir goes at the end of this function), so soname_set can read links.
+        soname_set "$CHY_ROOT/store/$1-$2" <"$rp_m" >"$CHY_ROOT/build/sos-old"
+        soname_set "$CHY_ROOT/store/$3"    <"$LIST" >"$CHY_ROOT/build/sos-new"
         LC_ALL=C comm -23 "$CHY_ROOT/build/sos-old" "$CHY_ROOT/build/sos-new" |
             while IFS= read -r rp_s; do
                 warn "$1" "soname bump: $rp_s"
@@ -851,7 +862,7 @@ do_install() { # do_install <name> <requested: 1|0>
         fail "$1" "cannot record the install; rolled back"
     fi
 
-    [ -z "$di_prevver" ] || retire_prev "$1" "$di_prevver"  # now safe to retire
+    [ -z "$di_prevver" ] || retire_prev "$1" "$di_prevver" "$di_store"  # safe now
 
     # Same-version reinstall: the new tree was staged under a temp name so
     # the old one survived the commit. retire_prev keeps the store dir in
