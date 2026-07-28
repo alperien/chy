@@ -104,12 +104,15 @@ require() { # require <name> <tool>
 }
 
 # Significant lines of a list-valued recipe file: skip blanks and '#'
-# comments.
+# comments. The comment test runs on the line with leading whitespace
+# removed, so an indented '#' is a comment too (and an all-whitespace line
+# is blank), matching how a reader naturally sees the file.
 sig_lines() {
     while IFS= read -r sl_line || [ -n "$sl_line" ]; do
         sl_line=${sl_line%"$CR"}
-        case $sl_line in ''|'#'*) continue ;; esac
-        case $sl_line in *[![:space:]]*) printf '%s\n' "$sl_line" ;; esac
+        sl_bare=${sl_line#"${sl_line%%[![:space:]]*}"}
+        case $sl_bare in ''|'#'*) continue ;; esac
+        printf '%s\n' "$sl_line"
     done <"$1"
 }
 
@@ -165,8 +168,8 @@ installed_names() { # entries under db/installed, byte-sorted
 # recipes
 # overlay/<name>/ shadows recipes/<name>/ as a whole directory, never
 # per file. An invalid overlay fails loudly; it never falls
-# back to the default repo.
-recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the default repo dir
+# back to the corpus.
+recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the corpus dir
     rd_d=$CHY_ROOT/overlay/$1
     [ -d "$rd_d" ] || rd_d=$CHY_ROOT/recipes/$1
     printf '%s\n' "$rd_d"
@@ -251,7 +254,7 @@ fetch_url() { # fetch_url <name> <url> <outfile>
     fi
 }
 
-# One source line. A verified cache hit is simply reused; otherwise try the
+# One source line. A verified cache hit is used as-is; otherwise try the
 # line's URLs in order (download, verify, on mismatch delete and move
 # on), so a corrupt primary falls back to the mirror.
 fetch_source() { # fetch_source <name> <sha256> <source line>
@@ -265,7 +268,7 @@ fetch_source() { # fetch_source <name> <sha256> <source line>
     fi
     rm -f "$fs_cache"
     mkdir -p "$CHY_ROOT/cache"
-    fs_rest=$3 fs_got='(nothing downloaded)'
+    fs_rest=$3 fs_got='' fs_any=0
     while [ -n "$fs_rest" ]; do
         fs_url=${fs_rest%%[[:space:]]*}
         if [ "$fs_url" = "$fs_rest" ]; then
@@ -275,21 +278,29 @@ fetch_source() { # fetch_source <name> <sha256> <source line>
         fi
         [ -n "$fs_url" ] || continue
         if fetch_url "$1" "$fs_url" "$fs_cache"; then
-            fs_got=$(sha_of "$fs_cache")
+            fs_any=1 fs_got=$(sha_of "$fs_cache")
             [ "$fs_got" = "$2" ] && return 0
-        else
-            fs_got='(download failed)'
         fi
         rm -f "$fs_cache"
     done
+    # A checksum mismatch and a total download failure are different faults,
+    # and pointing the user at the recipe's checksums for a network outage
+    # wastes their time. Name whichever actually happened.
+    [ "$fs_any" -eq 1 ] ||
+        fail "$1" "cannot download $fs_file from any listed source"
     fail "$1" "checksum mismatch for $fs_file: expected $2, got $fs_got"
 }
 
 # fetch and verify every source before the build dir is prepared
 fetch_all() { # fetch_all <name>
-    mkdir -p "$CHY_ROOT/build"
-    sig_lines "$R_DIR/sources"   >"$CHY_ROOT/build/srcs"
-    sig_lines "$R_DIR/checksums" >"$CHY_ROOT/build/sums"
+    # Every write is checked: stale scratch from an interrupted run (build a
+    # regular file, or build/srcs a directory) must fail loudly here, not
+    # skip the loop silently and let the build run from unverified cache.
+    mkdir -p "$CHY_ROOT/build" || fail "$1" "cannot create the build dir"
+    sig_lines "$R_DIR/sources"   >"$CHY_ROOT/build/srcs" ||
+        fail "$1" "cannot stage the source list"
+    sig_lines "$R_DIR/checksums" >"$CHY_ROOT/build/sums" ||
+        fail "$1" "cannot stage the checksum list"
     while IFS= read -r fa_line <&3 && IFS= read -r fa_sum <&4; do
         fetch_source "$1" "$(first_field "$fa_sum")" "$fa_line"
     done 3<"$CHY_ROOT/build/srcs" 4<"$CHY_ROOT/build/sums"
@@ -306,6 +317,12 @@ stage_source() { # stage_source <name> <filename> <dir>
     ss_cache=$CHY_ROOT/cache/$2
     if is_archive "$2"; then
         require "$1" tar
+        # Refuse absolute or parent-traversing members before extracting, so
+        # a hostile archive cannot write outside the build dir. Not every tar
+        # enforces this, and chy must not lean on the one that happens to run.
+        tar -tf "$ss_cache" 2>/dev/null | while IFS= read -r ss_m; do
+            case $ss_m in /*|../*|*/../*|*/..|..) exit 1 ;; esac
+        done || fail "$1" "unsafe path in archive $2; refusing to extract"
         tar -xf "$ss_cache" -C "$3" || fail "$1" "cannot extract $2"
     else
         cp "$ss_cache" "$3/" || fail "$1" "cannot copy $2 into the build dir"
@@ -386,22 +403,27 @@ run_build() { # run_build <name>
 
 # normalize
 # The build staged a DESTDIR image of the real prefix at $DEST$CHY_ROOT.
-# Check it and normalize it, still in scratch, to a $CHY_ROOT-relative
-# tree at $NORM. On failure the root is untouched.
+# Check it and normalize it, still in scratch, to a
+# $CHY_ROOT-relative tree at $NORM. The root is untouched on failure.
 normalize() { # normalize <name>
     NORM=$CHY_ROOT/build/pkg
     n_bad=$CHY_ROOT/build/norm-failed
     rm -f "$n_bad"
     require "$1" readlink
 
+    # Every staged path must resolve under $DEST$CHY_ROOT. This loop is also
+    # the newline firewall: a path with an embedded newline splits into a
+    # fragment that cannot start with the absolute prefix, so it lands in the
+    # else arm and aborts the install. That property is load-bearing; a
+    # refactor to `find -path` predicates would silently drop it.
     find "$DEST" \( -type f -o -type l \) -print | while IFS= read -r n_p; do
         case $n_p in
             "$DEST$CHY_ROOT/"*) ;;
-            *) err "$1" "staged outside the prefix: ${n_p#"$DEST"}"
+            *) err "$1" "staged outside the prefix (or a path contains a newline): ${n_p#"$DEST"}"
                 : >"$n_bad" ;;
         esac
     done
-    [ ! -e "$n_bad" ] || fail "$1" "build staged files outside \$CHY_ROOT"
+    [ ! -e "$n_bad" ] || fail "$1" "build staged a path outside \$CHY_ROOT or containing a newline"
 
     if [ -z "$(find "$DEST$CHY_ROOT" \( -type f -o -type l \) -print 2>/dev/null)" ]; then
         fail "$1" "build installed nothing"
@@ -449,7 +471,13 @@ updots() { # print ../ once per directory level of a relative path
 conflict_scan() { # conflict_scan <name>
     LIST=$CHY_ROOT/build/files
     (cd "$NORM" && find . \( -type f -o -type l \) -print) |
-        sed 's|^\./||' | LC_ALL=C sort >"$LIST"
+        sed 's|^\./||' | LC_ALL=C sort >"$LIST" ||
+        fail "$1" "cannot enumerate the staged tree"
+    # normalize already refused an empty build, so an empty list here means a
+    # truncated find/sort (a full disk), never a real package. Catching it
+    # stops a partial list from silently linking and recording a subset.
+    [ -s "$LIST" ] ||
+        fail "$1" "internal error: empty file list for a non-empty build"
 
     while IFS= read -r cs_p; do
         cs_d=$cs_p
@@ -517,11 +545,18 @@ link_farm() { # link_farm <name>: record each created link, nonzero on failure
 
 # Commit rollback helpers (the install links completely or not at
 # all). The previous install stays intact until the new farm links land;
-# on any failure we make sure to undo the new links, drop the new store entry, restore
+# on any failure we undo the new links, drop the new store entry, restore
 # the old alias, and re-link the old farm.
+# Repoint the store alias. Not "ln -sfn": the -n flag is not POSIX, and a
+# plain "ln -sf" would follow an existing alias (a symlink to a directory)
+# and create the link inside it. Unlink first, then create.
+point_alias() { # point_alias <name> <target>
+    rm -f "$CHY_ROOT/store/$1" && ln -s "$2" "$CHY_ROOT/store/$1"
+}
+
 restore_alias() { # restore_alias <name> <previous target, or empty>
-    if [ -n "$2" ]; then ln -sfn "$2" "$CHY_ROOT/store/$1"
-    else rm -f "$CHY_ROOT/store/$1"; fi
+    rm -f "$CHY_ROOT/store/$1"
+    [ -z "$2" ] || ln -s "$2" "$CHY_ROOT/store/$1"
 }
 
 rollback_farm() { # remove the farm links this install created
@@ -599,20 +634,33 @@ retire_prev() { # retire_prev <name> <prev version>: drop stale links, old store
     rm -rf "$CHY_ROOT/db/installed/$1"
 }
 
-# The db entry is written once the farm links land (pipeline step 11),
-# before the advisory verify. its presence is what "installed" means.
-# depends and conflicts are copied verbatim from the recipe. the empty
-# requested marker means "named on the command line"; dependency
-# installs never carry it, and upgrade keeps whatever it found.
-write_db() { # write_db <name> <requested: 1|0>
-    wd_db=$CHY_ROOT/db/installed/$1
-    rm -rf "$wd_db"
-    mkdir -p "$wd_db"
-    printf '%s %s\n' "$R_VER" "$R_REV" >"$wd_db/version"
-    cp "$LIST" "$wd_db/manifest"
-    [ ! -f "$R_DIR/depends" ] || cp "$R_DIR/depends" "$wd_db/depends"
-    [ ! -f "$R_DIR/conflicts" ] || cp "$R_DIR/conflicts" "$wd_db/conflicts"
-    [ "$2" -ne 1 ] || : >"$wd_db/requested"
+# The db entry marks a package installed: depends and conflicts are copied
+# verbatim from the recipe, and the empty requested marker means "named on
+# the command line" (dependency installs never carry it; upgrade keeps
+# whatever it found). It is assembled under a temp name and published with a
+# single rename, so the entry appears whole or not at all. stage_db builds
+# it before the old entry is retired, so a write failure (a full disk) still
+# rolls back to an intact previous install; commit_db is the rename, step 11.
+# Every write is checked, so a failure can never place an unrecorded package.
+stage_db() { # stage_db <name> <requested: 1|0>
+    wd_new=$CHY_ROOT/db/installed/.$1.new
+    rm -rf "$wd_new" && mkdir -p "$wd_new" || return 1
+    printf '%s %s\n' "$R_VER" "$R_REV" >"$wd_new/version" || return 1
+    cp "$LIST" "$wd_new/manifest" || return 1
+    if [ -f "$R_DIR/depends" ]; then
+        cp "$R_DIR/depends" "$wd_new/depends" || return 1
+    fi
+    if [ -f "$R_DIR/conflicts" ]; then
+        cp "$R_DIR/conflicts" "$wd_new/conflicts" || return 1
+    fi
+    if [ "$2" -eq 1 ]; then
+        : >"$wd_new/requested" || return 1
+    fi
+}
+
+commit_db() { # commit_db <name>: publish the staged entry atomically
+    rm -rf "$CHY_ROOT/db/installed/$1" &&
+        mv "$CHY_ROOT/db/installed/.$1.new" "$CHY_ROOT/db/installed/$1"
 }
 
 # runtime verification
@@ -647,7 +695,7 @@ scan_needs() { # scan_needs <store entry dir>
             ldd "$sn_f" 2>&1 || :
     done | LC_ALL=C awk '
         $2 == "=>" && $3 == "not" && $4 == "found" { print $1 }
-        # an annoying edge case: a candidate that exists but is not a loadable ELF
+        # a candidate that exists but is not a loadable ELF makes the
         # loader abort instead of printing "=> not found"; recover the
         # offending soname from that message so it is not silently lost.
         /: error while loading shared libraries: / {
@@ -743,9 +791,9 @@ do_remove() { # do_remove <name>; the package must be installed
 }
 
 # install
-# The pipeline, in order. Any failure up to and including the
-# conflict scan leaves the root as it was, so a failed rebuild never
-# costs the working install.
+# The pipeline, in order. Any failure up to and including the shape check
+# (steps 1-6) leaves the root as it was, and the commit steps that follow
+# roll back on failure, so a failed rebuild never costs the working install.
 do_install() { # do_install <name> <requested: 1|0>
     valid_name "$1" || fail "$1" "invalid package name"
     recipe_check "$1"                              # 1
@@ -755,9 +803,13 @@ do_install() { # do_install <name> <requested: 1|0>
     normalize "$1"                                 # 5
     conflict_scan "$1"                             # 6
     shape_check "$1"
-    # 7-10: commit. The previous install (its db entry and old store dir)
-    # is kept until the new farm links succeed, so a failure here rolls
-    # back to it and a failed commit costs nothing.
+    # Commit (steps 8-11). The previous install stays intact until the new
+    # farm links and db entry are both ready, so any failure here rolls back
+    # to it and costs nothing. The one trap is reinstalling the version that
+    # is already installed: its store entry has the same name as the new one,
+    # so building directly onto it would destroy the live install a failed
+    # commit is meant to preserve. In that case alone, stage the new tree
+    # under a temp name and swap it in only once the commit has succeeded.
     di_prevver=
     if [ -f "$CHY_ROOT/db/installed/$1/version" ]; then
         read -r di_prevver _ <"$CHY_ROOT/db/installed/$1/version" || :
@@ -766,28 +818,54 @@ do_install() { # do_install <name> <requested: 1|0>
     di_alias=
     [ ! -L "$CHY_ROOT/store/$1" ] || di_alias=$(readlink "$CHY_ROOT/store/$1")
 
+    di_store=$1-$R_VER di_samever=0
+    if [ "$di_prevver" = "$R_VER" ] && [ -d "$CHY_ROOT/store/$1-$R_VER" ]; then
+        di_samever=1 di_store=.$1-$R_VER.new
+    fi
+
     step "$1" "link $1-$R_VER"
     mkdir -p "$CHY_ROOT/store"
     : >"$CHY_ROOT/build/linked"
-    rm -rf "$CHY_ROOT/store/$1-$R_VER"
-    mv "$NORM" "$CHY_ROOT/store/$1-$R_VER" ||       # 8: place the store entry
+    rm -rf "$CHY_ROOT/store/$di_store"
+    mv "$NORM" "$CHY_ROOT/store/$di_store" ||        # 8: place the store entry
         fail "$1" "cannot place the store entry"
-    if ! ln -sfn "$1-$R_VER" "$CHY_ROOT/store/$1"; then    # 9: point the alias
-        rm -rf "$CHY_ROOT/store/$1-$R_VER"
+    if ! point_alias "$1" "$di_store"; then          # 9: point the alias
+        rm -rf "$CHY_ROOT/store/$di_store"
         restore_alias "$1" "$di_alias"
         fail "$1" "cannot point the alias"
     fi
-    if ! link_farm "$1"; then                       # 10: link, with rollback
+    if ! link_farm "$1"; then                        # 10: link, with rollback
         rollback_farm "$1"
-        rm -rf "$CHY_ROOT/store/$1-$R_VER"
+        rm -rf "$CHY_ROOT/store/$di_store"
         restore_alias "$1" "$di_alias"
         relink_prev "$1"
         fail "$1" "cannot link the farm; rolled back"
     fi
-    [ -z "$di_prevver" ] || retire_prev "$1" "$di_prevver" # 7, now safe
+    # Assemble the new db entry before retiring the old one, so a write
+    # failure still leaves the previous install whole to roll back to.
+    if ! stage_db "$1" "$2"; then
+        rollback_farm "$1"
+        rm -rf "$CHY_ROOT/store/$di_store"
+        restore_alias "$1" "$di_alias"
+        relink_prev "$1"
+        fail "$1" "cannot record the install; rolled back"
+    fi
 
-    write_db "$1" "$2"                              # 11: presence = installed
-    verify_runtime "$1"                             # 12: warnings only
+    [ -z "$di_prevver" ] || retire_prev "$1" "$di_prevver"  # now safe to retire
+
+    # Same-version reinstall: the new tree was staged under a temp name so
+    # the old one survived the commit. retire_prev keeps the store dir in
+    # this case (its version matches), so drop it now and swap the new tree
+    # onto the canonical name and alias.
+    if [ "$di_samever" -eq 1 ]; then
+        rm -rf "$CHY_ROOT/store/$1-$R_VER"
+        mv "$CHY_ROOT/store/$di_store" "$CHY_ROOT/store/$1-$R_VER" ||
+            fail "$1" "cannot settle the store entry"
+        point_alias "$1" "$1-$R_VER" || fail "$1" "cannot settle the alias"
+    fi
+
+    commit_db "$1" || fail "$1" "cannot record the install"  # 11: now installed
+    verify_runtime "$1"                              # 12: warnings only
     added "$1" "$R_VER" "$R_REV"
 }
 
