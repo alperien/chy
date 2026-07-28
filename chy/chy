@@ -62,11 +62,12 @@ EOF
 # validation
 # Package names match [A-Za-z0-9][A-Za-z0-9+._-]*. Versions and revisions
 # match [A-Za-z0-9._+]+ (no hyphen, so store/<name>-<version> parses
-# cleanly). "install" and "order" are reserved since they appear as
-# output scopes.
+# cleanly). "install", "order", and "rebuild" are reserved: they appear as
+# scopes in the "-> <scope> ..." stdout grammar, so a package of that name
+# would make the progress stream ambiguous.
 
 valid_name() {
-    case $1 in ''|[!A-Za-z0-9]*|install|order) return 1 ;; esac
+    case $1 in ''|[!A-Za-z0-9]*|install|order|rebuild) return 1 ;; esac
     case ${1#?} in *[!A-Za-z0-9+._-]*) return 1 ;; *) return 0 ;; esac
 }
 
@@ -443,14 +444,17 @@ normalize() { # normalize <name>
 }
 
 # linking
-# A farm symlink is owned by <name> iff the path component of its target
-# right after store/ is exactly <name>.
+# A farm symlink is owned by <name> iff its target has chy's own shape: a
+# run of ../ (from updots) then store/<name>/... . Matching store/ anywhere
+# in the target would misattribute a foreign link whose path merely passes
+# through a directory named store (a backup mount, a chroot), so anchor to
+# the leading ../-run instead.
 owner_of() { # owner_of <link>: print the owning component, if any
     oo_t=$(readlink "$1") || return 0
+    while [ "${oo_t#../}" != "$oo_t" ]; do oo_t=${oo_t#../}; done
     case $oo_t in
-        store/*)   oo_t=${oo_t#store/} ;;
-        */store/*) oo_t=${oo_t#*/store/} ;;
-        *)         return 0 ;;
+        store/*) oo_t=${oo_t#store/} ;;
+        *)       return 0 ;;
     esac
     printf '%s\n' "${oo_t%%/*}"
 }
@@ -945,6 +949,8 @@ resolve_conflicts() {
         list_names "$(recipe_dir "$rc_n")/conflicts" >"$RES/confl"
         while IFS= read -r rc_c <&4; do
             [ "$rc_c" = "$rc_n" ] && continue
+            valid_name "$rc_c" || continue   # a bogus conflict name matches
+                                             # nothing and must not form a path
             [ ! -d "$CHY_ROOT/db/installed/$rc_c" ] ||
                 printf '%s %s installed\n' "$rc_n" "$rc_c" >>"$RES/pairs"
             ! in_set "$rc_c" "$NEEDED" ||
@@ -1312,11 +1318,24 @@ doctor_scan() {
         warn doctor 'ldd unavailable; runtime verification skipped'
     fi
     for ds_d in "$CHY_ROOT/db/installed/"*; do
-        [ -f "$ds_d/version" ] || continue
+        [ -d "$ds_d" ] || continue
         printf '%s\n' "${ds_d##*/}"
     done | LC_ALL=C sort | while IFS= read -r ds_p; do
-        ds_v='' ds_m=$CHY_ROOT/db/installed/$ds_p/manifest
+        ds_m=$CHY_ROOT/db/installed/$ds_p/manifest
+        # A well-formed entry has a readable version and a manifest. A half
+        # written entry (hand damage, or a kill in an older write path) must
+        # be reported, not skipped, or doctor calls a damaged root clean.
+        if [ ! -f "$CHY_ROOT/db/installed/$ds_p/version" ]; then
+            printf 'doctor: %s: corrupt db entry (no version)\n' "$ds_p"
+            continue
+        fi
+        ds_v=''
         read -r ds_v _ <"$CHY_ROOT/db/installed/$ds_p/version" || :
+        ds_v=${ds_v%"$CR"}
+        if [ -z "$ds_v" ]; then
+            printf 'doctor: %s: corrupt db entry (empty version)\n' "$ds_p"
+            continue
+        fi
 
         [ "$dsc_ldd" -eq 0 ] ||                    # 1: unresolved libraries
             scan_needs "$CHY_ROOT/store/$ds_p-$ds_v" |
@@ -1324,7 +1343,10 @@ doctor_scan() {
                     printf 'doctor: %s: needs %s\n' "$ds_p" "$ds_s"
                 done
 
-        [ -f "$ds_m" ] || continue
+        if [ ! -f "$ds_m" ]; then
+            printf 'doctor: %s: corrupt db entry (no manifest)\n' "$ds_p"
+            continue
+        fi
         while IFS= read -r ds_mp || [ -n "$ds_mp" ]; do   # 2: broken farm links
             [ -n "$ds_mp" ] || continue
             [ -L "$CHY_ROOT/$ds_mp" ] || continue
