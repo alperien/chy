@@ -1368,6 +1368,14 @@ cmd_doctor() {
 # build/bumped; the installed dependents of every bumped package are
 # then rebuilt so nothing keeps NEEDing a name the farm dropped.
 
+is_binary_kind() { # is_binary_kind <name>: the recipe declares kind binary
+    ik_f=$(recipe_dir "$1")/kind
+    [ -f "$ik_f" ] || return 1
+    ik_k=
+    read -r ik_k <"$ik_f" || :
+    [ "${ik_k%"$CR"}" = binary ]
+}
+
 # Resumability: a package left needing a soname the farm now
 # carries at a different version (a same-stem sibling under usr/lib)
 # was stranded by an interrupted bump rebuild; reinstalling relinks it
@@ -1378,11 +1386,18 @@ needs_relink() { # needs_relink <store entry dir>
     [ -n "$nr_miss" ] || return 1
     while IFS= read -r nr_l; do
         nr_s=$(first_field "$nr_l")     # scan lines may carry the map hint
-        nr_stem=${nr_s%.so*}            # the name up to its last ".so"
-        [ "$nr_stem" != "$nr_s" ] || continue
-        for nr_c in "$CHY_ROOT/usr/lib/$nr_stem.so" \
-                    "$CHY_ROOT/usr/lib/$nr_stem.so".*; do
-            [ -e "$nr_c" ] || continue # dangling names provide nothing
+        case $nr_s in                   # only a real soname has a sibling
+            *.so)   nr_stem=${nr_s%.so} ;;
+            *.so.*) nr_stem=${nr_s%%.so.*} ;;
+            *)      continue ;;         # not soname-shaped: not a relink case
+        esac
+        # A versioned sibling at a DIFFERENT version means the farm moved
+        # under this package, so a rebuild relinks it. The bare $stem.so is a
+        # link-time dev symlink, not a runtime provider, so it never counts:
+        # a need whose only farm entry is the dev link, or nothing at all, is
+        # host drift, doctor's to report and never rebuilt here.
+        for nr_c in "$CHY_ROOT/usr/lib/$nr_stem".so.*; do
+            [ -e "$nr_c" ] || continue  # dangling names provide nothing
             [ "${nr_c##*/}" = "$nr_s" ] || return 0
         done
     done <<EOF
@@ -1499,6 +1514,8 @@ EOF
             in_set "$cu_n" "$CU_T" && continue
             in_set "$cu_n" "$PROVIDED" && continue
             [ -d "$(recipe_dir "$cu_n")" ] || continue
+            is_binary_kind "$cu_n" && continue  # a prebuilt NEEDED cannot
+                                                # change by rebuilding
             read_version "$CHY_ROOT/db/installed/$cu_n/version"
             [ -n "$VQ_VER" ] || continue
             if needs_relink "$CHY_ROOT/store/$cu_n-$VQ_VER"; then
@@ -1543,7 +1560,12 @@ EOF
             [ ! -f "$CHY_ROOT/db/installed/$POP/requested" ] ||
                 CU_MARK="$CU_MARK$POP "
         done
-        upgrade_run "$cu_batch"
+        # Resolve the batch so each dependent's declared depends and
+        # makedepends are present before its forced rebuild, the way a plain
+        # install would ensure them. A build tool removed since the last
+        # build is reinstalled first, instead of the build failing mid-run.
+        resolve "$cu_batch"
+        upgrade_run "$ORDER"
     done
     exit 0
 }
