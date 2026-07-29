@@ -1,9 +1,9 @@
 #!/bin/sh
-# chy. A tiny package manager for hand-built Linux systems.
+# chy. A tiny, source-based package manager for hand-built Linux systems.
+# One POSIX shell script. No daemon, no root, and no state that isn't a
+# plain file under $CHY_ROOT.
 #
-# One POSIX sh file. All state is on the filesystem under $CHY_ROOT.
-#
-# install builds a package into store/<name>-<version>/, links it into
+# install builds each package into store/<name>-<version>/, links it into
 # the usr/ symlink farm, and records it under db/installed/. upgrade,
 # remove, list, outdated, why, and doctor all work from that on-disk
 # state. usage() lists the verbs.
