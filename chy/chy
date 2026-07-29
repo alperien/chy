@@ -422,7 +422,7 @@ normalize() { # normalize <name>
         case $n_p in
             "$DEST$CHY_ROOT/"*) ;;
             *) err "$1" "staged outside the prefix (or a path contains a newline): ${n_p#"$DEST"}"
-                : >"$n_bad" ;;
+                true >"$n_bad" ;;
         esac
     done
     [ ! -e "$n_bad" ] || fail "$1" "build staged a path outside \$CHY_ROOT or containing a newline"
@@ -436,7 +436,7 @@ normalize() { # normalize <name>
         case $n_t in
             "$DEST"*)
                 err "$1" "symlink baked with the staging path: ${n_p#"$DEST$CHY_ROOT/"} -> $n_t"
-                : >"$n_bad" ;;
+                true >"$n_bad" ;;
         esac
     done
     [ ! -e "$n_bad" ] || fail "$1" "symlink targets baked with \$1 (DESTDIR)"
@@ -475,12 +475,17 @@ updots() { # print ../ once per directory level of a relative path
 # path must be free or a real directory.
 conflict_scan() { # conflict_scan <name>
     LIST=$CHY_ROOT/build/files
-    (cd "$NORM" && find . \( -type f -o -type l \) -print) |
-        sed 's|^\./||' | LC_ALL=C sort >"$LIST" ||
+    # Capture find's own status, not just the tail of the pipe: a find that
+    # fails partway (an unreadable directory, EIO) would otherwise leave a
+    # truncated but non-empty list that silently links and records a subset.
+    # Write find's output to a file so its exit status is checked directly.
+    cs_raw=$CHY_ROOT/build/rawfiles
+    (cd "$NORM" && find . \( -type f -o -type l \) -print) >"$cs_raw" ||
+        fail "$1" "cannot enumerate the staged tree"
+    sed 's|^\./||' "$cs_raw" | LC_ALL=C sort >"$LIST" ||
         fail "$1" "cannot enumerate the staged tree"
     # normalize already refused an empty build, so an empty list here means a
-    # truncated find/sort (a full disk), never a real package. Catching it
-    # stops a partial list from silently linking and recording a subset.
+    # truncated find/sort (a full disk), never a real package.
     [ -s "$LIST" ] ||
         fail "$1" "internal error: empty file list for a non-empty build"
 
@@ -552,16 +557,21 @@ link_farm() { # link_farm <name>: record each created link, nonzero on failure
 # all). The previous install stays intact until the new farm links land;
 # on any failure we undo the new links, drop the new store entry, restore
 # the old alias, and re-link the old farm.
-# Repoint the store alias. Not "ln -sfn": the -n flag is not POSIX, and a
-# plain "ln -sf" would follow an existing alias (a symlink to a directory)
-# and create the link inside it. Unlink first, then create.
+# Repoint the store alias in one command. -f and -n are not in POSIX, but
+# every userland chy targets (GNU coreutils, busybox, the BSDs) has both, and
+# they are the only correct way to replace this link: the alias points at a
+# directory, so a plain "ln -sf" would follow it and create the new link
+# INSIDE the old package, and "rm then ln" would leave the alias (and every
+# farm link that resolves through it) missing if the create then failed. -n
+# forces a non-following, single-syscall replace, so a failure leaves the old
+# alias untouched. This is the one deliberate non-POSIX utility flag in chy.
 point_alias() { # point_alias <name> <target>
-    rm -f "$CHY_ROOT/store/$1" && ln -s "$2" "$CHY_ROOT/store/$1"
+    ln -sfn "$2" "$CHY_ROOT/store/$1"
 }
 
 restore_alias() { # restore_alias <name> <previous target, or empty>
-    rm -f "$CHY_ROOT/store/$1"
-    [ -z "$2" ] || ln -s "$2" "$CHY_ROOT/store/$1"
+    if [ -n "$2" ]; then point_alias "$1" "$2"
+    else rm -f "$CHY_ROOT/store/$1"; fi
 }
 
 rollback_farm() { # remove the farm links this install created
@@ -596,7 +606,7 @@ relink_prev() { # re-link the previous install's paths this install clobbered
 # libz.so.1.2.3 that a soname link supersedes.
 soname_set() { # soname_set <store root>: stdin = farm-relative paths
     ss_scan=$CHY_ROOT/build/soname-scan
-    : >"$ss_scan"
+    true >"$ss_scan"
     while IFS= read -r ss_p || [ -n "$ss_p" ]; do
         case $ss_p in
             usr/lib/*) ss_b=${ss_p#usr/lib/} ;;
@@ -614,7 +624,12 @@ soname_set() { # soname_set <store root>: stdin = farm-relative paths
         fi
     done
     LC_ALL=C awk '
-        $1 == "l" { sym[$2] = 1; backed[$3] = 1; next }
+        # Only a VERSIONED link (libz.so.1) supersedes the real file it backs.
+        # The bare dev link (libz.so) must not: its target is often the real
+        # soname itself (OpenSSL 3 ships libssl.so.3 as the real file with
+        # libssl.so -> libssl.so.3), which dependents NEED and which must stay
+        # in the set.
+        $1 == "l" { sym[$2] = 1; if ($2 ~ /\.so\./) backed[$3] = 1; next }
         $1 == "f" { file[$2] = 1 }
         END {
             for (n in sym)  print n
@@ -670,7 +685,7 @@ stage_db() { # stage_db <name> <requested: 1|0>
         cp "$R_DIR/conflicts" "$wd_new/conflicts" || return 1
     fi
     if [ "$2" -eq 1 ]; then
-        : >"$wd_new/requested" || return 1
+        true >"$wd_new/requested" || return 1
     fi
 }
 
@@ -842,10 +857,14 @@ do_install() { # do_install <name> <requested: 1|0>
 
     step "$1" "link $1-$R_VER"
     mkdir -p "$CHY_ROOT/store"
-    : >"$CHY_ROOT/build/linked"
-    rm -rf "$CHY_ROOT/store/$di_store"
-    mv "$NORM" "$CHY_ROOT/store/$di_store" ||        # 8: place the store entry
+    true >"$CHY_ROOT/build/linked"
+    rm -rf "$CHY_ROOT/store/.$1-"*.new    # reclaim any temp a crash stranded
+    # rm then mv as one guarded step: if the rm fails and a dir is left, mv
+    # would nest the new tree inside it and exit 0, a false success.
+    if ! { rm -rf "$CHY_ROOT/store/$di_store" &&    # 8: place the store entry
+           mv "$NORM" "$CHY_ROOT/store/$di_store"; }; then
         fail "$1" "cannot place the store entry"
+    fi
     if ! point_alias "$1" "$di_store"; then          # 9: point the alias
         rm -rf "$CHY_ROOT/store/$di_store"
         restore_alias "$1" "$di_alias"
@@ -875,9 +894,12 @@ do_install() { # do_install <name> <requested: 1|0>
     # this case (its version matches), so drop it now and swap the new tree
     # onto the canonical name and alias.
     if [ "$di_samever" -eq 1 ]; then
-        rm -rf "$CHY_ROOT/store/$1-$R_VER"
-        mv "$CHY_ROOT/store/$di_store" "$CHY_ROOT/store/$1-$R_VER" ||
+        # guarded rm-then-mv, same reason as step 8: a failed rm must not let
+        # mv nest the new tree inside a surviving old dir and report success.
+        if ! { rm -rf "$CHY_ROOT/store/$1-$R_VER" &&
+               mv "$CHY_ROOT/store/$di_store" "$CHY_ROOT/store/$1-$R_VER"; }; then
             fail "$1" "cannot settle the store entry"
+        fi
         point_alias "$1" "$1-$R_VER" || fail "$1" "cannot settle the alias"
     fi
 
@@ -894,10 +916,10 @@ do_install() { # do_install <name> <requested: 1|0>
 # Step 3: every needed name must have a recipe.
 resolve() { # resolve <space-separated requested names>; sets ORDER
     RES=$CHY_ROOT/build/resolve
-    rm -rf "$RES"; mkdir -p "$RES"
+    rm -rf "$RES"; mkdir -p "$RES" || fail install "cannot create the build scratch"
     require install sort
     require install awk
-    : >"$RES/edges"; : >"$RES/missing"
+    true >"$RES/edges"; true >"$RES/missing"
 
     NEEDED=" $1 " rv_seen=" $1 " REST=$1
     printf '%s\n' "$1" | tr ' ' '\n' >"$RES/needed"
@@ -946,7 +968,7 @@ resolve() { # resolve <space-separated requested names>; sets ORDER
 # match takes the "installed" wording, since "installed" < "needed" in
 # byte order.
 resolve_conflicts() {
-    : >"$RES/pairs"
+    true >"$RES/pairs"
     while IFS= read -r rc_n <&3; do
         list_names "$(recipe_dir "$rc_n")/conflicts" >"$RES/confl"
         while IFS= read -r rc_c <&4; do
@@ -1121,7 +1143,7 @@ cascade_remove() {
         in_set "$ca_n" "$ca_named" || ca_named="$ca_named$ca_n "
     done
     RES=$CHY_ROOT/build/resolve
-    rm -rf "$RES"; mkdir -p "$RES"
+    rm -rf "$RES"; mkdir -p "$RES" || fail remove "cannot create the build scratch"
     require remove sort
     require remove awk
 
@@ -1157,7 +1179,7 @@ cascade_remove() {
         [ -z "$ca_by" ] || fail "$POP" "required by: $ca_by"
     done
 
-    : >"$RES/needed"; : >"$RES/edges"        # set-internal recorded edges
+    true >"$RES/needed"; true >"$RES/edges"        # set-internal recorded edges
     REST=$ca_set
     while pop; do
         printf '%s\n' "$POP" >>"$RES/needed"
@@ -1460,7 +1482,7 @@ rebuild_set() { # rebuild_set <bumped-set> <done-set>
 
     RES=$CHY_ROOT/build/resolve
     rm -rf "$RES"; mkdir -p "$RES"
-    : >"$RES/needed"; : >"$RES/edges"
+    true >"$RES/needed"; true >"$RES/edges"
     rb_q=${rb_new# }
     while [ -n "$rb_q" ]; do
         case $rb_q in
@@ -1589,9 +1611,9 @@ EOF
 }
 
 # dispatch
-# Options, the color palette, root validation, then the verb. Kept in main()
-# so the file is source-able (a test can load the functions without running a
-# command), with main "$@" as the last line.
+# Options, the color palette, root validation, then the verb, gathered in
+# main() with main "$@" as the last line, so startup is one place instead of
+# scattered top-level statements.
 main() {
     set -u
     if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
