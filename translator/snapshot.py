@@ -451,8 +451,15 @@ def _harvest_makedepends(names, outdir, tmp):
                 " snapshot; its makedepends are not in the slice and its"
                 " translation will refuse\n" % name)
             continue
-        harvested |= dump_dep_names(dump_root, name)
-        harvested |= injected_tools(dump_root, name)
+        try:
+            harvested |= dump_dep_names(dump_root, name)
+            harvested |= injected_tools(dump_root, name)
+        except UnicodeDecodeError:
+            sys.stderr.write(
+                "chytrans: WARNING: %s: dump is not valid UTF-8 while building"
+                " the snapshot; its makedepends are not in the slice and its"
+                " translation will refuse\n" % name)
+            continue
     return harvested
 
 

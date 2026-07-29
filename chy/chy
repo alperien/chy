@@ -482,8 +482,11 @@ conflict_scan() { # conflict_scan <name>
     cs_raw=$CHY_ROOT/build/rawfiles
     (cd "$NORM" && find . \( -type f -o -type l \) -print) >"$cs_raw" ||
         fail "$1" "cannot enumerate the staged tree"
-    sed 's|^\./||' "$cs_raw" | LC_ALL=C sort >"$LIST" ||
-        fail "$1" "cannot enumerate the staged tree"
+    # Each stage writes a file and is checked on its own, so a partial write
+    # from any of them (a full disk) fails the install rather than leaving a
+    # truncated list that silently links and records a subset.
+    LC_ALL=C sort -o "$cs_raw" "$cs_raw" || fail "$1" "cannot enumerate the staged tree"
+    sed 's|^\./||' "$cs_raw" >"$LIST" || fail "$1" "cannot enumerate the staged tree"
     # normalize already refused an empty build, so an empty list here means a
     # truncated find/sort (a full disk), never a real package.
     [ -s "$LIST" ] ||
@@ -495,7 +498,8 @@ conflict_scan() { # conflict_scan <name>
             cs_d=${cs_d%/*}
             printf '%s\n' "$cs_d"
         done
-    done <"$LIST" | LC_ALL=C sort -u >"$CHY_ROOT/build/dirs"
+    done <"$LIST" | LC_ALL=C sort -u >"$CHY_ROOT/build/dirs" ||
+        fail "$1" "cannot enumerate the staged directories"
 
     cs_bad=0
     while IFS= read -r cs_d; do
@@ -561,10 +565,11 @@ link_farm() { # link_farm <name>: record each created link, nonzero on failure
 # every userland chy targets (GNU coreutils, busybox, the BSDs) has both, and
 # they are the only correct way to replace this link: the alias points at a
 # directory, so a plain "ln -sf" would follow it and create the new link
-# INSIDE the old package, and "rm then ln" would leave the alias (and every
-# farm link that resolves through it) missing if the create then failed. -n
-# forces a non-following, single-syscall replace, so a failure leaves the old
-# alias untouched. This is the one deliberate non-POSIX utility flag in chy.
+# INSIDE the old package, and a scripted "rm then ln" would leave the alias
+# (and every farm link that resolves through it) missing if the create then
+# failed. -n replaces without following, in one command instead of a separate
+# unlink step, so a failing ln leaves the old alias in place. This is the one
+# deliberate non-POSIX utility flag in chy.
 point_alias() { # point_alias <name> <target>
     ln -sfn "$2" "$CHY_ROOT/store/$1"
 }
@@ -624,12 +629,17 @@ soname_set() { # soname_set <store root>: stdin = farm-relative paths
         fi
     done
     LC_ALL=C awk '
-        # Only a VERSIONED link (libz.so.1) supersedes the real file it backs.
-        # The bare dev link (libz.so) must not: its target is often the real
-        # soname itself (OpenSSL 3 ships libssl.so.3 as the real file with
-        # libssl.so -> libssl.so.3), which dependents NEED and which must stay
-        # in the set.
-        $1 == "l" { sym[$2] = 1; if ($2 ~ /\.so\./) backed[$3] = 1; next }
+        # A link supersedes the real file it points to only when the link is
+        # itself versioned AND its target extends the link name. So libz.so.1
+        # backs libz.so.1.2.3 (dropped in its favour), but a bare dev link
+        # (libz.so -> libz.so.3) never supersedes, and neither does a compat
+        # alias to a different soname (libx.so.1 -> libx.so.2): the real
+        # libssl.so.3 / libx.so.2 is a name dependents NEED and stays in the set.
+        $1 == "l" {
+            sym[$2] = 1
+            if ($2 ~ /\.so\./ && index($3, $2 ".") == 1) backed[$3] = 1
+            next
+        }
         $1 == "f" { file[$2] = 1 }
         END {
             for (n in sym)  print n
@@ -858,7 +868,10 @@ do_install() { # do_install <name> <requested: 1|0>
     step "$1" "link $1-$R_VER"
     mkdir -p "$CHY_ROOT/store"
     true >"$CHY_ROOT/build/linked"
-    rm -rf "$CHY_ROOT/store/.$1-"*.new    # reclaim any temp a crash stranded
+    rm -rf "$CHY_ROOT/store/.$1-$R_VER.new"   # reclaim this version's temp if
+                                              # a crash stranded it (exact name:
+                                              # a glob would cross into a
+                                              # hyphenated sibling's temp)
     # rm then mv as one guarded step: if the rm fails and a dir is left, mv
     # would nest the new tree inside it and exit 0, a false success.
     if ! { rm -rf "$CHY_ROOT/store/$di_store" &&    # 8: place the store entry
