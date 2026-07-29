@@ -93,7 +93,7 @@ def _read_dump(dumpdir, name):
     if not os.path.isfile(varsfile):
         raise Refuse('no evaluated dump at %s' % varsfile)
     dump = {}
-    with open(varsfile, encoding='utf-8') as f:
+    with open(varsfile, encoding='utf-8', errors='replace') as f:
         for line in f.read().splitlines():
             if not line:
                 continue
@@ -108,7 +108,8 @@ def _read_dump(dumpdir, name):
     fdir = os.path.join(d, 'functions')
     if os.path.isdir(fdir):
         for fname in sorted(os.listdir(fdir)):
-            with open(os.path.join(fdir, fname), encoding='utf-8') as f:
+            with open(os.path.join(fdir, fname), encoding='utf-8',
+                      errors='replace') as f:
                 functions[fname] = f.read()
     return dump, functions
 

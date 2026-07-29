@@ -70,12 +70,13 @@ while IFS= read -r line; do
 done <"$set_file"
 [ $# -gt 0 ] || die "no package names in $set_file"
 
-# seed the out-root with the corpus's handwritten exceptions so the
-# translator's short-circuit preserves them (modes included)
+# seed the out-root with every existing corpus recipe (modes included):
+# the translator's short-circuit preserves handwritten exceptions, a
+# soak-deferred package's recipe survives untouched instead of vanishing
+# from the corpus, and translated recipes are regenerated wholesale
 mkdir -p "$out/recipes"
 for meta in "$corpus"/recipes/*/meta; do
     [ -f "$meta" ] || continue
-    grep -q '^origin:[[:space:]]*handwritten[[:space:]]*$' "$meta" || continue
     dir=${meta%/meta}
     cp -Rp "$dir" "$out/recipes/${dir##*/}"
 done

@@ -430,6 +430,9 @@ def _harvest_makedepends(names, outdir, tmp):
             "chytrans: WARNING: translation from this snapshot will refuse"
             " any package needing more\n")
         return set()
+    # evaluate.sh sources untrusted upstream templates: scrub the API
+    # token from its environment so a hostile template can't read it.
+    env = {k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"}
     harvested = set()
     for name in names:
         dump_root = os.path.join(tmp, "snapdump", name)
@@ -437,7 +440,7 @@ def _harvest_makedepends(names, outdir, tmp):
         try:
             proc = _run(["bash", eval_sh,
                          os.path.join(outdir, "srcpkgs", name),
-                         dump_root], timeout=300)
+                         dump_root], timeout=300, env=env)
         except subprocess.TimeoutExpired:
             sys.stderr.write("chytrans: WARNING: %s: evaluation timed out"
                              " while building the snapshot\n" % name)
