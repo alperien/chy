@@ -286,9 +286,10 @@ fetch_source() { # fetch_source <name> <sha256> <source line>
 
 # fetch and verify every source before the build dir is prepared
 fetch_all() { # fetch_all <name>
-    # Every write is checked: stale scratch (build a regular file, or
-    # build/srcs a directory) must fail here, not skip the loop silently and
-    # let the build run from unverified cache.
+    # Every write here gets checked. An interrupted run can leave build as a
+    # regular file or build/srcs as a directory; if those writes failed
+    # quietly, the loop would never run and the build would use the cache
+    # without ever verifying a checksum.
     mkdir -p "$CHY_ROOT/build" || fail "$1" "cannot create the build dir"
     sig_lines "$R_DIR/sources"   >"$CHY_ROOT/build/srcs" ||
         fail "$1" "cannot stage the source list"
@@ -404,10 +405,10 @@ normalize() { # normalize <name>
     rm -f "$n_bad"
     require "$1" readlink
 
-    # Every staged path must resolve under $DEST$CHY_ROOT. This loop is also
-    # the newline firewall: a newline in a path splits off a fragment that
-    # cannot start with the absolute prefix, so it hits the else arm and aborts.
-    # Load-bearing; a rewrite to `find -path` predicates would drop it.
+    # Every staged path has to resolve under $DEST$CHY_ROOT. This loop also
+    # catches newlines: one in a path splits off a fragment that can't start
+    # with the prefix, so it hits the else and aborts. Don't turn it into
+    # find -path, you'd lose that.
     find "$DEST" \( -type f -o -type l \) -print | while IFS= read -r n_p; do
         case $n_p in
             "$DEST$CHY_ROOT/"*) ;;
@@ -436,9 +437,9 @@ normalize() { # normalize <name>
 
 # linking
 # A farm symlink is owned by <name> iff its target has chy's own shape: a run
-# of ../ (from updots) then store/<name>/... . Matching store/ anywhere would
-# misattribute a foreign link passing through a dir named store, so anchor to
-# the leading ../-run.
+# of ../ (from updots) then store/<name>/... . Matching store/ anywhere in the
+# target would claim a foreign link that just passes through some directory
+# called store, so the match anchors to the leading ../ run.
 owner_of() { # owner_of <link>: print the owning component, if any
     oo_t=$(readlink "$1") || return 0
     while [ "${oo_t#../}" != "$oo_t" ]; do oo_t=${oo_t#../}; done
@@ -463,16 +464,14 @@ updots() { # print ../ once per directory level of a relative path
 # has to be free or already our own symlink, a needed directory free or real.
 conflict_scan() { # conflict_scan <name>
     LIST=$CHY_ROOT/build/files
-    # Capture find's own status, not just the tail of the pipe: a find that
-    # fails partway (an unreadable directory, EIO) would otherwise leave a
-    # truncated but non-empty list that silently links and records a subset.
-    # Write find's output to a file so its exit status is checked directly.
+    # This list decides what gets checked, linked, and recorded, so a
+    # truncated one would silently install a subset. No pipeline: each stage
+    # writes a file and its own exit status is checked, find's included (a
+    # pipe would only report the last stage, and find is the one that fails
+    # partway on an unreadable directory).
     cs_raw=$CHY_ROOT/build/rawfiles
     (cd "$NORM" && find . \( -type f -o -type l \) -print) >"$cs_raw" ||
         fail "$1" "cannot enumerate the staged tree"
-    # Each stage writes a file and is checked on its own, so a partial write
-    # from any of them (a full disk) fails the install rather than leaving a
-    # truncated list that silently links and records a subset.
     LC_ALL=C sort -o "$cs_raw" "$cs_raw" || fail "$1" "cannot enumerate the staged tree"
     sed 's|^\./||' "$cs_raw" >"$LIST" || fail "$1" "cannot enumerate the staged tree"
     # normalize already refused an empty build, so an empty list here means a
@@ -592,11 +591,11 @@ commit_rollback() { # commit_rollback <name> <new store dir> <prev alias>
 }
 
 # The soname set of an installed tree: the names a dependent resolves at
-# runtime. A soname is a symlink under usr/lib/ or lib/ (one component, *.so
-# or *.so.*); the real file a soname link backs is an implementation detail
-# and is dropped, but a real *.so no link backs is kept. This reads link
-# targets, not just names, because no name-only rule can tell a compat soname
-# (libbz2.so.1.0, still NEEDED) from a backing file a link supersedes.
+# runtime. A soname is a symlink under usr/lib/ or lib/, one path component,
+# matching *.so or *.so.*. A real file backed by a soname link drops out in
+# favour of the link; a real *.so no link backs stays in the set. Link
+# targets have to be read for this: by name alone a compat soname like
+# libbz2.so.1.0 looks exactly like a backing file.
 soname_set() { # soname_set <store root>: stdin = farm-relative paths
     ss_scan=$CHY_ROOT/build/soname-scan
     true >"$ss_scan"
@@ -617,10 +616,11 @@ soname_set() { # soname_set <store root>: stdin = farm-relative paths
         fi
     done
     LC_ALL=C awk '
-        # A link supersedes its target only if the link is versioned AND the
-        # target extends the link name: libz.so.1 backs libz.so.1.2.3, but a
-        # bare dev link (libz.so -> libssl.so.3) and a compat alias to another
-        # soname (libx.so.1 -> libx.so.2) do not, so the real soname stays.
+        # A link drops its target only when the link is versioned and the
+        # target extends its name: libz.so.1 backs libz.so.1.2.3. A bare dev
+        # link (libssl.so -> libssl.so.3) drops nothing, and neither does a
+        # compat alias to another soname (libx.so.1 -> libx.so.2); their
+        # targets are real sonames and stay in the set.
         $1 == "l" {
             sym[$2] = 1
             if ($2 ~ /\.so\./ && index($3, $2 ".") == 1) backed[$3] = 1
@@ -661,11 +661,12 @@ retire_prev() { # retire_prev <name> <prev version> <new store dir>
     rm -rf "$CHY_ROOT/db/installed/$1"
 }
 
-# The db entry marks a package installed: depends/conflicts from the recipe,
-# and the empty requested marker means "named on the command line". stage_db
-# builds it under a temp name (every write checked, before the old entry is
-# retired, so a failure rolls back cleanly); commit_db publishes it with one
-# rename (step 11), so it is whole or absent and never left unrecorded.
+# The db entry is what makes a package installed. depends and conflicts come
+# from the recipe; the empty requested marker means "named on the command
+# line". stage_db assembles the entry under a temp name, checking every write,
+# and runs before the old entry is retired, so a full disk still rolls back to
+# a working install. commit_db publishes it with one rename, pipeline step 11.
+# The entry is whole or absent, a package can't end up placed but unrecorded.
 stage_db() { # stage_db <name> <requested: 1|0>
     wd_new=$CHY_ROOT/db/installed/.$1.new
     { rm -rf "$wd_new" && mkdir -p "$wd_new"; } || return 1
@@ -823,10 +824,12 @@ do_install() { # do_install <name> <requested: 1|0>
     normalize "$1"                                 # 5
     conflict_scan "$1"                             # 6
     shape_check "$1"
-    # Commit (steps 8-11): the previous install stays intact until the new farm
-    # links and db entry are both ready, so any failure rolls back. The trap is
-    # reinstalling the installed version (same store name), which would destroy
-    # the live install; only then, stage under a temp name and swap in on success.
+    # Commit, steps 8-11. The previous install stays intact until the new farm
+    # links and db entry are both ready, so any failure here rolls back to it.
+    # The trap is reinstalling the version that's already installed: the old
+    # and new store entries share a name, and building onto it would destroy
+    # the live install a failed commit is supposed to keep. That one case
+    # stages the new tree under a temp name and swaps it in at the end.
     di_prevver=
     if [ -f "$CHY_ROOT/db/installed/$1/version" ]; then
         read -r di_prevver _ <"$CHY_ROOT/db/installed/$1/version" || :
@@ -843,11 +846,11 @@ do_install() { # do_install <name> <requested: 1|0>
     step "$1" "link $1-$R_VER"
     mkdir -p "$CHY_ROOT/store"
     true >"$CHY_ROOT/build/linked"
-    rm -rf "$CHY_ROOT/store/.$1-$R_VER.new"  # reclaim a crash-stranded temp
-                                             # (exact name: a glob would cross
-                                             # a hyphenated sibling's temp)
-    # rm and mv as one guarded step: a failed rm leaving a dir would let mv
-    # nest the new tree inside it and exit 0, a false success.
+    rm -rf "$CHY_ROOT/store/.$1-$R_VER.new"  # reclaim the temp a crash left.
+                                             # Exact name, not a glob: a glob
+                                             # would grab a sibling's temp too.
+    # rm and mv guarded as one step. If the rm failed and left a directory,
+    # mv would move the new tree inside it and exit 0 as if it had worked.
     if ! { rm -rf "$CHY_ROOT/store/$di_store" &&    # 8: place the store entry
            mv "$NORM" "$CHY_ROOT/store/$di_store"; }; then
         fail "$1" "cannot place the store entry"
@@ -875,8 +878,8 @@ do_install() { # do_install <name> <requested: 1|0>
     # this case (its version matches), so drop it now and swap the new tree
     # onto the canonical name and alias.
     if [ "$di_samever" -eq 1 ]; then
-        # guarded rm-then-mv, same reason as step 8: a failed rm must not let
-        # mv nest the new tree inside a surviving old dir and report success.
+        # rm and mv guarded as one step, same reason as step 8: if the rm
+        # failed, mv would bury the new tree inside the surviving old dir.
         if ! { rm -rf "$CHY_ROOT/store/$1-$R_VER" &&
                mv "$CHY_ROOT/store/$di_store" "$CHY_ROOT/store/$1-$R_VER"; }; then
             fail "$1" "cannot settle the store entry"
@@ -953,8 +956,8 @@ resolve_conflicts() {
         list_names "$(recipe_dir "$rc_n")/conflicts" >"$RES/confl"
         while IFS= read -r rc_c <&4; do
             [ "$rc_c" = "$rc_n" ] && continue
-            valid_name "$rc_c" || continue   # a bogus conflict name matches
-                                             # nothing and must not form a path
+            # A bogus conflict name matches nothing, don't build a path from it.
+            valid_name "$rc_c" || continue
             [ ! -d "$CHY_ROOT/db/installed/$rc_c" ] ||
                 printf '%s %s installed\n' "$rc_n" "$rc_c" >>"$RES/pairs"
             ! in_set "$rc_c" "$NEEDED" ||
@@ -1408,10 +1411,11 @@ needs_relink() { # needs_relink <store entry dir>
             *.so.*) nr_stem=${nr_s%%.so.*} ;;
             *)      continue ;;         # not soname-shaped: not a relink case
         esac
-        # A versioned sibling at a DIFFERENT version means the farm moved under
-        # this package, so a rebuild relinks it. The bare $stem.so is a
-        # link-time dev symlink, never a runtime provider; a need whose only
-        # farm entry is that, or nothing, is host drift for doctor to report.
+        # A versioned sibling at some other version means the farm moved under
+        # this package, and a rebuild relinks it. The bare $stem.so is a
+        # link-time dev symlink, not a runtime provider. A need whose only
+        # farm entry is that, or nothing at all, is host drift; doctor
+        # reports it and nothing gets rebuilt here.
         for nr_c in "$CHY_ROOT/usr/lib/$nr_stem".so.*; do
             [ -e "$nr_c" ] || continue  # dangling names provide nothing
             [ "${nr_c##*/}" = "$nr_s" ] || return 0
@@ -1530,8 +1534,8 @@ EOF
             in_set "$cu_n" "$CU_T" && continue
             in_set "$cu_n" "$PROVIDED" && continue
             [ -d "$(recipe_dir "$cu_n")" ] || continue
-            is_binary_kind "$cu_n" && continue  # a prebuilt NEEDED cannot
-                                                # change by rebuilding
+            # Rebuilding a prebuilt package can't change what it NEEDs.
+            is_binary_kind "$cu_n" && continue
             read_version "$CHY_ROOT/db/installed/$cu_n/version"
             [ -n "$VQ_VER" ] || continue
             if needs_relink "$CHY_ROOT/store/$cu_n-$VQ_VER"; then
@@ -1576,10 +1580,10 @@ EOF
             [ ! -f "$CHY_ROOT/db/installed/$POP/requested" ] ||
                 CU_MARK="$CU_MARK$POP "
         done
-        # Resolve the batch so each dependent's declared depends and
-        # makedepends are present before its forced rebuild, the way a plain
-        # install would ensure them. A build tool removed since the last
-        # build is reinstalled first, instead of the build failing mid-run.
+        # Resolve the batch first, so a dependent's declared depends and
+        # makedepends are present before its forced rebuild, the same promise
+        # a plain install makes. A build tool removed since the last build
+        # gets reinstalled instead of the build dying mid-run.
         resolve "$cu_batch"
         upgrade_run "$ORDER"
     done
@@ -1587,9 +1591,9 @@ EOF
 }
 
 # dispatch
-# Options, the color palette, root validation, then the verb, gathered in
-# main() with main "$@" as the last line, so startup is one place instead of
-# scattered top-level statements.
+# The color palette, root validation, then the verb. All of startup lives in
+# main(), with main "$@" as the file's last line, not scattered through the
+# file as top-level statements.
 main() {
     set -u
     if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
