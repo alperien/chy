@@ -92,15 +92,23 @@ def _read_dump(dumpdir, name):
     varsfile = os.path.join(d, 'vars')
     if not os.path.isfile(varsfile):
         raise Refuse('no evaluated dump at %s' % varsfile)
+    # A non-UTF-8 byte in the evaluated dump refuses that one package (a
+    # per-package Refuse the caller already handles) instead of killing
+    # the whole run with an uncaught UnicodeDecodeError or mangling the
+    # value into the recipe. Decode strict, turn a bad byte into a Refuse.
     dump = {}
-    with open(varsfile, encoding='utf-8', errors='replace') as f:
-        for line in f.read().splitlines():
-            if not line:
-                continue
-            if '\t' not in line:
-                raise Refuse('malformed dump vars line: %r' % line)
-            key, _, value = line.partition('\t')
-            dump[key] = _unescape(value)
+    try:
+        with open(varsfile, encoding='utf-8') as f:
+            vars_text = f.read()
+    except UnicodeDecodeError as e:
+        raise Refuse('dump vars is not valid UTF-8: %s' % e)
+    for line in vars_text.splitlines():
+        if not line:
+            continue
+        if '\t' not in line:
+            raise Refuse('malformed dump vars line: %r' % line)
+        key, _, value = line.partition('\t')
+        dump[key] = _unescape(value)
     for key in _DUMP_KEYS:
         if key not in dump:
             raise Refuse('dump vars missing required key %r' % key)
@@ -108,9 +116,11 @@ def _read_dump(dumpdir, name):
     fdir = os.path.join(d, 'functions')
     if os.path.isdir(fdir):
         for fname in sorted(os.listdir(fdir)):
-            with open(os.path.join(fdir, fname), encoding='utf-8',
-                      errors='replace') as f:
-                functions[fname] = f.read()
+            try:
+                with open(os.path.join(fdir, fname), encoding='utf-8') as f:
+                    functions[fname] = f.read()
+            except UnicodeDecodeError as e:
+                raise Refuse('function %s is not valid UTF-8: %s' % (fname, e))
     return dump, functions
 
 

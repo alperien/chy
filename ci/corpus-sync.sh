@@ -70,15 +70,25 @@ while IFS= read -r line; do
 done <"$set_file"
 [ $# -gt 0 ] || die "no package names in $set_file"
 
-# seed the out-root with every existing corpus recipe (modes included):
-# the translator's short-circuit preserves handwritten exceptions, a
-# soak-deferred package's recipe survives untouched instead of vanishing
-# from the corpus, and translated recipes are regenerated wholesale
+# seed the out-root with each existing corpus recipe whose package is still
+# in the set, plus every handwritten exception (modes included). The
+# translator regenerates translated recipes wholesale and preserves the
+# handwritten and soak-deferred ones it is seeded, so a deferred package's
+# recipe survives instead of vanishing. A package dropped from the set is NOT
+# seeded, so it is pruned from the corpus on this sync rather than copied back.
+set_names=' '
+for sn in "$@"; do set_names="$set_names$sn "; done
 mkdir -p "$out/recipes"
 for meta in "$corpus"/recipes/*/meta; do
     [ -f "$meta" ] || continue
     dir=${meta%/meta}
-    cp -Rp "$dir" "$out/recipes/${dir##*/}"
+    name=${dir##*/}
+    case $set_names in
+        *" $name "*) ;;
+        *) grep -q '^origin:[[:space:]]*handwritten[[:space:]]*$' "$meta" \
+               || continue ;;
+    esac
+    cp -Rp "$dir" "$out/recipes/$name"
 done
 
 rc=0
