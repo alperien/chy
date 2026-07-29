@@ -13,14 +13,11 @@ CHY_VERSION=0.5.0
 CR=$(printf '\r') # to strip from lines of hand-edited (DOS) recipe files
 
 # output
-# stdout: progress and the order/rebuild
-# announcements are "-> <scope> <step>", results are "+ <name>
-# <ver>_<rev>" (installed) and "- <name> <ver>_<rev>" (removed);
-# doctor and why report lines carry no program prefix. stderr keeps
-# the Unix "chy: <name>: warning|error: <what>" grammar.
-# On a terminal, with NO_COLOR unset or empty, only the sigils are
-# tinted; piped or redirected stdout is byte-identical to the plain
-# grammar, and stderr is never colored. main() sets the palette at startup.
+# stdout: progress "-> <scope> <step>", results "+ <name> <ver>_<rev>"
+# (installed) / "- ..." (removed); doctor and why lines carry no prefix.
+# stderr: "chy: <name>: warning|error: <what>". On a tty with NO_COLOR unset
+# only the sigils are tinted; piped stdout is byte-identical to plain, and
+# stderr is never colored. main() sets the palette at startup.
 
 step()    { printf '%s->%s %s %s\n' "$C_ARROW" "$C_OFF" "$1" "$2"; }
 added()   { printf '%s+%s %s %s_%s\n' "$C_PLUS" "$C_OFF" "$1" "$2" "$3"; }
@@ -61,11 +58,10 @@ no_opts() { # no_opts <args>
 }
 
 # validation
-# Package names match [A-Za-z0-9][A-Za-z0-9+._-]*. Versions and revisions
-# match [A-Za-z0-9._+]+ (no hyphen, so store/<name>-<version> parses
-# cleanly). "install", "order", and "rebuild" are reserved: they appear as
-# scopes in the "-> <scope> ..." stdout grammar, so a package of that name
-# would make the progress stream ambiguous.
+# Package names match [A-Za-z0-9][A-Za-z0-9+._-]*. Versions and revisions match
+# [A-Za-z0-9._+]+ (no hyphen, so store/<name>-<version> parses cleanly).
+# "install", "order", and "rebuild" are reserved: they're scopes in the
+# "-> <scope> ..." stdout grammar, so a package named that would be ambiguous.
 
 valid_name() {
     case $1 in ''|[!A-Za-z0-9]*|install|order|rebuild) return 1 ;; esac
@@ -148,8 +144,7 @@ pop() {
     esac
 }
 
-# First field of every significant line. A missing file is an empty
-# list.
+# First field of every significant line; a missing file is an empty list.
 list_names() { # list_names <file>
     [ -f "$1" ] || return 0
     sig_lines "$1" | while IFS= read -r ln_l; do first_field "$ln_l"; done
@@ -167,9 +162,8 @@ installed_names() { # entries under db/installed, byte-sorted
 }
 
 # recipes
-# overlay/<name>/ shadows recipes/<name>/ as a whole directory, never
-# per file. An invalid overlay fails loudly; it never falls
-# back to the corpus.
+# overlay/<name>/ shadows recipes/<name>/ as a whole directory, never per file.
+# An invalid overlay fails loudly; it never falls back to the corpus.
 recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the corpus dir
     rd_d=$CHY_ROOT/overlay/$1
     [ -d "$rd_d" ] || rd_d=$CHY_ROOT/recipes/$1
@@ -232,11 +226,10 @@ recipe_check() { # recipe_check <name>
         fail "$1" "duplicate source filename: $(printf '%s\n' "$rc_dup" | head -n 1)"
 }
 
-# recipe_check's version parse without the validation, for the read
-# verbs: the first line, "<version>" or "<version> <revision>",
-# CR-stripped, into VQ_VER and VQ_REV. Unreadable tokens stay empty;
-# no revision default here (a db version always has both tokens,
-# so only recipe readers default theirs).
+# recipe_check's version parse without the validation, for the read verbs:
+# line 1 ("<version>" or "<version> <revision>"), CR-stripped, into VQ_VER and
+# VQ_REV. Unreadable tokens stay empty; no revision default (a db version
+# always has both tokens, so only recipe readers default theirs).
 read_version() { # read_version <file>
     VQ_VER='' VQ_REV=''
     [ -f "$1" ] || return 0
@@ -255,9 +248,9 @@ fetch_url() { # fetch_url <name> <url> <outfile>
     fi
 }
 
-# One source line. A verified cache hit is used as-is; otherwise try the
-# line's URLs in order (download, verify, on mismatch delete and move
-# on), so a corrupt primary falls back to the mirror.
+# One source line. A verified cache hit is used as-is; otherwise try the line's
+# URLs in order (download, verify, on mismatch delete and move on), so a
+# corrupt primary falls back to the mirror.
 fetch_source() { # fetch_source <name> <sha256> <source line>
     fs_file=$(first_field "$3")
     fs_file=${fs_file##*/}
@@ -329,9 +322,9 @@ stage_source() { # stage_source <name> <filename> <dir>
     fi
 }
 
-# If extracting the first source yielded exactly one top-level entry
-# (dotfiles count) and it is a directory, hoist its contents up one
-# level so ./configure works from the top.
+# If extracting the first source left exactly one top-level entry (dotfiles
+# count) and it's a directory, hoist its contents up a level so ./configure
+# works from the top.
 hoist() { # hoist <dir>
     h_count=0 h_only=
     for h_e in "$1"/* "$1"/.[!.]* "$1"/..?*; do
@@ -385,8 +378,8 @@ prepare_build() { # prepare_build <name>
 }
 
 # build
-# sh <recipe dir>/build <destdir> <version>, cwd the prepared build
-# dir, with the environment. A nonzero exit aborts the install.
+# sh <recipe dir>/build <destdir> <version>, cwd the prepared build dir, with
+# the environment. A nonzero exit aborts the install.
 run_build() { # run_build <name>
     step "$1" "build $1-$R_VER"
     (
@@ -444,8 +437,8 @@ normalize() { # normalize <name>
 # linking
 # A farm symlink is owned by <name> iff its target has chy's own shape: a run
 # of ../ (from updots) then store/<name>/... . Matching store/ anywhere would
-# misattribute a foreign link passing through a dir named store (a backup
-# mount, a chroot), so anchor to the leading ../-run.
+# misattribute a foreign link passing through a dir named store, so anchor to
+# the leading ../-run.
 owner_of() { # owner_of <link>: print the owning component, if any
     oo_t=$(readlink "$1") || return 0
     while [ "${oo_t#../}" != "$oo_t" ]; do oo_t=${oo_t#../}; done
@@ -465,10 +458,9 @@ updots() { # print ../ once per directory level of a relative path
     printf '%s\n' "$ud_u"
 }
 
-# Conflicts are found from the normalized tree before the store or farm
-# is touched, so the install links completely or not at all. A needed
-# file path must be free or already our own symlink; a needed directory
-# path must be free or a real directory.
+# Conflicts are found from the normalized tree before the store or farm is
+# touched, so the install links completely or not at all: a needed file path
+# has to be free or already our own symlink, a needed directory free or real.
 conflict_scan() { # conflict_scan <name>
     LIST=$CHY_ROOT/build/files
     # Capture find's own status, not just the tail of the pipe: a find that
@@ -541,8 +533,8 @@ shape_check() { # shape_check <name>
     fi
 }
 
-# Make the store entry visible: real directories, then one relative
-# symlink per file, pointing through the store/<name> alias.
+# Make the store entry visible: real directories, then one relative symlink per
+# file, pointing through the store/<name> alias.
 link_farm() { # link_farm <name>: record each created link, nonzero on failure
     while IFS= read -r lf_p; do
         lf_d=${lf_p%/*}
@@ -556,10 +548,10 @@ link_farm() { # link_farm <name>: record each created link, nonzero on failure
 # Commit rollback helpers: an install links completely or not at all, so on
 # failure we undo the new links, drop the new store entry, and restore the old
 # alias and farm.
-# ln -sfn: -f and -n are not POSIX but every target userland has them, and are
-# the only correct replace here. The alias points at a directory, so "ln -sf"
-# would follow it into the old package and "rm then ln" would strand the alias
-# if the ln then failed; -n replaces without following, in one command.
+# ln -sfn: -f and -n are not POSIX but every target userland has them and they
+# are the only correct replace here. The alias points at a directory, so
+# "ln -sf" would follow it into the old package and "rm then ln" would strand
+# it if the ln then failed; -n replaces without following, in one command.
 point_alias() { # point_alias <name> <target>
     ln -sfn "$2" "$CHY_ROOT/store/$1"
 }
@@ -669,26 +661,20 @@ retire_prev() { # retire_prev <name> <prev version> <new store dir>
     rm -rf "$CHY_ROOT/db/installed/$1"
 }
 
-# The db entry marks a package installed: depends and conflicts copied from
-# the recipe, and the empty requested marker means "named on the command line"
-# (deps never carry it; upgrade keeps what it found). It is built under a temp
-# name (stage_db, every write checked, before the old entry is retired so a
-# failure rolls back cleanly) and published by one rename (commit_db, step 11),
-# so it appears whole or not at all and a failure never leaves it unrecorded.
+# The db entry marks a package installed: depends/conflicts from the recipe,
+# and the empty requested marker means "named on the command line". stage_db
+# builds it under a temp name (every write checked, before the old entry is
+# retired, so a failure rolls back cleanly); commit_db publishes it with one
+# rename (step 11), so it is whole or absent and never left unrecorded.
 stage_db() { # stage_db <name> <requested: 1|0>
     wd_new=$CHY_ROOT/db/installed/.$1.new
-    rm -rf "$wd_new" && mkdir -p "$wd_new" || return 1
+    { rm -rf "$wd_new" && mkdir -p "$wd_new"; } || return 1
     printf '%s %s\n' "$R_VER" "$R_REV" >"$wd_new/version" || return 1
     cp "$LIST" "$wd_new/manifest" || return 1
-    if [ -f "$R_DIR/depends" ]; then
-        cp "$R_DIR/depends" "$wd_new/depends" || return 1
-    fi
-    if [ -f "$R_DIR/conflicts" ]; then
+    [ ! -f "$R_DIR/depends" ] || cp "$R_DIR/depends" "$wd_new/depends" || return 1
+    [ ! -f "$R_DIR/conflicts" ] ||
         cp "$R_DIR/conflicts" "$wd_new/conflicts" || return 1
-    fi
-    if [ "$2" -eq 1 ]; then
-        true >"$wd_new/requested" || return 1
-    fi
+    [ "$2" -ne 1 ] || true >"$wd_new/requested" || return 1
 }
 
 commit_db() { # commit_db <name>: publish the staged entry atomically
@@ -697,10 +683,10 @@ commit_db() { # commit_db <name>: publish the staged entry atomically
 }
 
 # runtime verification
-# The ELF scan. Each ELF under $1 is
-# run through ldd with $CHY_ROOT/usr/lib on LD_LIBRARY_PATH, so it sees
-# what a launched program would. Output: the distinct unresolved sonames
-# (ldd's "=> not found"), byte-sorted, each with shlib_hint appended.
+# The ELF scan: each ELF under $1 is run through ldd with $CHY_ROOT/usr/lib on
+# LD_LIBRARY_PATH, so it sees what a launched program would. Output: the
+# distinct unresolved sonames (ldd's "=> not found"), byte-sorted, each with
+# shlib_hint appended.
 
 ELF_MAGIC=$(printf '\177ELF')
 
@@ -837,12 +823,10 @@ do_install() { # do_install <name> <requested: 1|0>
     normalize "$1"                                 # 5
     conflict_scan "$1"                             # 6
     shape_check "$1"
-    # Commit (steps 8-11). The previous install stays intact until the new farm
-    # links and db entry are both ready, so any failure rolls back to it. The
-    # trap is reinstalling the installed version: its store entry has the new
-    # one's name, so building onto it would destroy the live install a failed
-    # commit must preserve. Only then, stage under a temp name and swap it in
-    # after the commit succeeds.
+    # Commit (steps 8-11): the previous install stays intact until the new farm
+    # links and db entry are both ready, so any failure rolls back. The trap is
+    # reinstalling the installed version (same store name), which would destroy
+    # the live install; only then, stage under a temp name and swap in on success.
     di_prevver=
     if [ -f "$CHY_ROOT/db/installed/$1/version" ]; then
         read -r di_prevver _ <"$CHY_ROOT/db/installed/$1/version" || :
@@ -906,11 +890,11 @@ do_install() { # do_install <name> <requested: 1|0>
 }
 
 # resolver
-# install resolution, steps 2-5, in build/resolve (finished
-# before any pipeline step wipes build/). Step 2 walks depends+makedepends
-# from the requested names; a dependency already installed or provided is
-# satisfied and its subtree skipped, but a requested name never is.
-# Step 3: every needed name must have a recipe.
+# install resolution, steps 2-5, in build/resolve (finished before any pipeline
+# step wipes build/). Step 2 walks depends+makedepends from the requested
+# names; a dependency already installed or provided is satisfied and its
+# subtree skipped, but a requested name never is. Step 3: every needed name
+# has to have a recipe.
 resolve() { # resolve <space-separated requested names>; sets ORDER
     RES=$CHY_ROOT/build/resolve
     rm -rf "$RES"; mkdir -p "$RES" || fail install "cannot create the build scratch"
@@ -959,11 +943,10 @@ resolve() { # resolve <space-separated requested names>; sets ORDER
     esac
 }
 
-# Step 4 conflict checks: a needed recipe vs an installed
-# package, an installed db-conflicts vs a needed one, and two needed
-# recipes. One line per violating pair, sorted by name then other; a dual
-# match takes the "installed" wording, since "installed" < "needed" in
-# byte order.
+# Step 4 conflict checks: a needed recipe vs an installed package, an installed
+# db-conflicts vs a needed one, and two needed recipes. One line per violating
+# pair, sorted by name then other; a dual match takes the "installed" wording
+# ("installed" < "needed" in byte order).
 resolve_conflicts() {
     true >"$RES/pairs"
     while IFS= read -r rc_n <&3; do
@@ -1001,12 +984,11 @@ resolve_conflicts() {
     exit 1
 }
 
-# Step 5: order $RES/needed over the $RES/edges kept inside the set.
-# Repeatedly emit the byte-smallest name whose kept dependencies have
-# all been emitted; that is the unique smallest valid sequence. A stall
-# means a cycle. Under install, print the cycle from its smallest member
-# and exit 3; under cascade (remove -r), drop that member's cycle edge
-# and carry on.
+# Step 5: order $RES/needed over the $RES/edges kept inside the set. Repeatedly
+# emit the byte-smallest name whose kept dependencies are all emitted; that's
+# the unique smallest valid sequence. A stall means a cycle: under install,
+# print it from its smallest member and exit 3; under cascade (remove -r), drop
+# that member's cycle edge and carry on.
 order_awk() { # order_awk <install|cascade>
     # Byte-sort both inputs: names[] has to arrive in byte order, and a
     # byte-ordered edge list makes cycle-path tie-breaks deterministic
@@ -1127,11 +1109,11 @@ cmd_install() {
     done
 }
 
-# remove -r: the removal set starts as the named packages plus
-# every unrequested installed package in their recorded-depends closure.
-# Then any non-named member some installed package outside the set still
-# depends on gets dropped, repeatedly, to a fixed point. Mutually
-# dependent orphans that only cite each other still go. db data only.
+# remove -r: the removal set is the named packages plus every unrequested
+# installed package in their recorded-depends closure. Then any non-named
+# member some installed package outside the set still depends on is dropped,
+# repeatedly, to a fixed point. Mutually dependent orphans that only cite each
+# other still go. db data only.
 cascade_remove() {
     ca_named=' '
     for ca_n in "$@"; do
@@ -1248,11 +1230,10 @@ cmd_list() {
 }
 
 # outdated
-# The predicate: a package's db "<version> <revision>" is not
-# byte-equal to its recipe's, the recipe revision defaulting to 1.
-# Version files only, never full recipe_check: one broken recipe must
-# not sink a whole report. Sets OD_IV OD_IR OD_RV OD_RR, raw tokens,
-# empty when unreadable.
+# The predicate: a package's db "<version> <revision>" isn't byte-equal to its
+# recipe's (recipe revision defaulting to 1). Version files only, never full
+# recipe_check, so one broken recipe can't sink a whole report. Sets OD_IV
+# OD_IR OD_RV OD_RR, raw tokens, empty when unreadable.
 version_drift() { # version_drift <name>: true when db and recipe differ
     read_version "$CHY_ROOT/db/installed/$1/version"
     OD_IV=$VQ_VER OD_IR=$VQ_REV
@@ -1322,10 +1303,10 @@ cmd_why() {
 }
 
 # doctor
-# Read-only: creates no directories. Per installed package, in
-# name order, three checks emit in stored manifest order: (1) the step-12
-# ELF scan, (2) broken owned farm links, (3) manifest drift (missing, or
-# present but not our own symlink).
+# Read-only: creates no directories. Per installed package, in name order,
+# three checks emit in stored manifest order: (1) the step-12 ELF scan, (2)
+# broken owned farm links, (3) manifest drift (missing, or present but not our
+# own symlink).
 doctor_scan() {
     dsc_ldd=1
     if ! command -v ldd >/dev/null 2>&1; then
@@ -1398,12 +1379,11 @@ cmd_doctor() {
 }
 
 # upgrade
-# Reinstall drifted packages. The target set resolves and
-# installs exactly as cmd_install; each package keeps the requested
-# marker it had, snapshotted up front because retire_prev drops the db
-# entry mid-run. A reinstall that lost a soname left its name in
-# build/bumped; the installed dependents of every bumped package are
-# then rebuilt so nothing keeps NEEDing a name the farm dropped.
+# Reinstall drifted packages. The target set resolves and installs exactly as
+# cmd_install; each keeps the requested marker it had, snapshotted up front
+# because retire_prev drops the db entry mid-run. A reinstall that lost a
+# soname left its name in build/bumped; the installed dependents of every
+# bumped package are then rebuilt so nothing keeps NEEDing a dropped name.
 
 is_binary_kind() { # is_binary_kind <name>: the recipe declares kind binary
     ik_f=$(recipe_dir "$1")/kind
