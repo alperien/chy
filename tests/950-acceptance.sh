@@ -1,14 +1,16 @@
 #!/bin/sh
 # The default-repo acceptance, in one script.
 #
-# Heavy: builds the full translated default repo closure from source
-# by asking for one thing, firefox, whose depends pull gtk+3, which
-# pulls everything else. Then: the drift check (built ELF
-# NEEDED vs each recipe's expect-needed ledger), chy doctor, and the
-# the payoff: Mozilla's binary launching in a rootless prefix.
+# Heavy: builds the full translated default repo closure by asking for
+# one thing, firefox, whose depends pull gtk+3, which pulls everything
+# else. Then the drift check (built ELF NEEDED vs each recipe's
+# expect-needed ledger), chy doctor, and the payoff: Mozilla's binary
+# launching in a rootless prefix.
 #
-# Gated: run only when CHY_ACCEPT=1 (the CI acceptance job sets it); the
-# regular suite SKIPs it loudly. Expects the host packages listed in
+# Gated: runs only when CHY_ACCEPT=1 (the CI acceptance job sets it);
+# the regular suite SKIPs it loudly. The default repo lives in
+# alperien/chy-recipes; the job checks it out and exports RECIPES_DIR
+# at that checkout. Expects the host packages in
 # tests/acceptance-hostpkgs (the Void container installs them).
 set -u
 
@@ -17,18 +19,30 @@ for t in cc make readelf python3; do
     command -v "$t" >/dev/null 2>&1 || { echo "acceptance: missing $t"; exit 1; }
 done
 
-repo=$(pwd)
+# acceptance was asked for explicitly, so a broken repo hookup must fail
+# loudly here, never skip.
+[ -n "${RECIPES_DIR:-}" ] || {
+    echo "acceptance: RECIPES_DIR not set (need a checkout of alperien/chy-recipes)"
+    exit 1
+}
+for f in recipes recipes/firefox/depends shlibs.map provided.suggested; do
+    [ -e "$RECIPES_DIR/$f" ] || {
+        echo "acceptance: $RECIPES_DIR/$f missing (not a chy-recipes checkout?)"
+        exit 1
+    }
+done
+
 work=$(mktemp -d) || exit 1
 trap 'rm -rf "$work"' EXIT INT TERM
 CHY_ROOT="$work/root"
 export CHY_ROOT
 
 mkdir -p "$CHY_ROOT/db"
-cp -R "$repo/recipes" "$CHY_ROOT/recipes"
-cp "$repo/shlibs.map" "$CHY_ROOT/shlibs.map"
+cp -R "$RECIPES_DIR/recipes" "$CHY_ROOT/recipes"
+cp "$RECIPES_DIR/shlibs.map" "$CHY_ROOT/shlibs.map"
 # provided = everything the closure needs that we don't build: first
 # column of provided.suggested, plus firefox's manual extras.
-awk 'NF {print $1}' "$repo/provided.suggested" > "$CHY_ROOT/db/provided"
+awk 'NF {print $1}' "$RECIPES_DIR/provided.suggested" > "$CHY_ROOT/db/provided"
 printf 'alsa-lib\ngcc\n' >> "$CHY_ROOT/db/provided"
 
 echo "== install firefox (binary kind) =="
@@ -38,7 +52,7 @@ echo "== install firefox (binary kind) =="
 # machinery: binary-kind relocation, the launcher, runtime
 # verification, doctor, launch. (The full FROM-SOURCE build is
 # deferred, it surfaced a real translator gap: per-patch strip levels.)
-awk 'NF {print $1}' "$repo/recipes/firefox/depends" > "$CHY_ROOT/db/provided"
+awk 'NF {print $1}' "$RECIPES_DIR/recipes/firefox/depends" > "$CHY_ROOT/db/provided"
 
 if ! sh chy/chy install firefox > "$work/out" 2> "$work/err"; then
     echo "firefox install FAILED, stdout:"; tail -n 30 "$work/out"

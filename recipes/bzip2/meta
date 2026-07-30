@@ -1,8 +1,0 @@
-origin: handwritten
-date: 2026-05-22
-pkgver: bzip2-1.0.8_2
-# hand-written because bzip2's do_install is 20-odd lines of manual
-# shell plus a pkg-config file from files/, which the translator's
-# idiom set won't touch.
-template: srcpkgs/bzip2/template (copied by hand)
-expect-needed: libc.so.6

@@ -3,8 +3,8 @@
 # opens an issue here instead of committing. The logic lives in ci/*.sh so
 # it is testable offline (tests/810-814); this file only wires it up.
 #
-# One-time setup by hand: create alperien/chy-corpus,
-# add a write deploy key there, store its private key as the CORPUS_DEPLOY_KEY
+# One-time setup by hand: on alperien/chy-recipes,
+# add a write deploy key, store its private key as the RECIPES_DEPLOY_KEY
 # secret here, and lock its default branch to that key.
 name: repo-sync
 
@@ -38,8 +38,8 @@ jobs:
       - name: check out the recipe repo (deploy key)
         uses: actions/checkout@v4
         with:
-          repository: alperien/chy-corpus
-          ssh-key: ${{ secrets.CORPUS_DEPLOY_KEY }}
+          repository: alperien/chy-recipes
+          ssh-key: ${{ secrets.RECIPES_DEPLOY_KEY }}
           path: repo
 
       - name: verify the repo lock
@@ -47,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p decisions
-          if ! sh ci/repo-verify-lock.sh --repo alperien/chy-corpus --decisions decisions; then
+          if ! sh ci/repo-verify-lock.sh --repo alperien/chy-recipes --decisions decisions; then
             RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             find decisions -type f -exec sed -i "s#RUN_URL#$RUN_URL#g" {} +
             sh ci/repo-apply.sh --decisions decisions --repo repo --issue-repo ${{ github.repository }}

@@ -60,8 +60,14 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - name: check out the recipe repo
+        uses: actions/checkout@v4
+        with:
+          repository: alperien/chy-recipes
+          path: recipes-repo
+
       - name: install the host stand-ins (tests/acceptance-hostpkgs)
         run: xbps-install -Syu $(grep -v '^#' tests/acceptance-hostpkgs | tr '\n' ' ')
 
       - name: default repo acceptance
-        run: CHY_ACCEPT=1 sh tests/950-acceptance.sh
+        run: CHY_ACCEPT=1 RECIPES_DIR="$GITHUB_WORKSPACE/recipes-repo" sh tests/950-acceptance.sh

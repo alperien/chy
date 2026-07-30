@@ -23,9 +23,12 @@ trap 'rm -rf "$work"' EXIT INT TERM
 CHY_ROOT="$work/root"
 export CHY_ROOT
 
+# the four recipes come from the committed golden translation,
+# byte-identical to what repo-sync publishes to alperien/chy-recipes.
+g="$repo/translator/tests/golden"
 mkdir -p "$CHY_ROOT/recipes" "$CHY_ROOT/db"
 for r in zlib libpng bzip2 freetype; do
-    cp -R "$repo/recipes/$r" "$CHY_ROOT/recipes/"
+    cp -R "$g/expected/recipes/$r" "$CHY_ROOT/recipes/"
 done
 # brotli and pkg-config stand in for the host base system:
 # translated freetype's makedepends name both, and the container has both.

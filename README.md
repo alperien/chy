@@ -11,8 +11,10 @@ root, so deleting the folder is equal to a full uninstall. Running chy with no a
 the list of all options.
 
     git clone https://github.com/alperien/chy && cd chy
+    git clone https://github.com/alperien/chy-recipes
     export CHY_ROOT=$HOME/.chy PATH="$HOME/.chy/usr/bin:$PATH"
-    mkdir -p "$CHY_ROOT" && ln -s "$PWD/recipes" "$CHY_ROOT/recipes"
+    mkdir -p "$CHY_ROOT" && ln -s "$PWD/chy-recipes/recipes" "$CHY_ROOT/recipes"
+    cp chy-recipes/shlibs.map "$CHY_ROOT/shlibs.map"
     sh chy/chy install freetype
 
 A recipe is a folder containing text files: version, sources, checksums,
@@ -22,7 +24,8 @@ points at: the symlink above picks the default repo, but making your
 own is encouraged. For quick tweaks there's also
 $CHY_ROOT/overlay/<name>, which chy reads before the repo.
 
-The chy-recipes repo is converted from Void Linux's xbps by the chytrans tool. All fixes go in the
-translator, PRs that edit recipes/ get closed.
+The default repo, [chy-recipes](https://github.com/alperien/chy-recipes), is converted from Void
+Linux's xbps by the chytrans tool and synced daily. All fixes go in the translator in this repo;
+recipe PRs against chy-recipes get closed.
 
 MIT.

@@ -74,14 +74,26 @@ rs = json.load(sys.stdin)
 rid = sys.argv[1]
 if rs.get("enforcement") != "active":
     print("ruleset %s: enforcement is %r, want active" % (rid, rs.get("enforcement")))
-actors = [a.get("actor_type") for a in rs.get("bypass_actors") or []]
-if actors != ["DeployKey"]:
-    print("ruleset %s: bypass actors %r, want exactly [DeployKey]" % (rid, actors))
-' "$rid" <"$work/ruleset.json" >>"$problems"
+if "bypass_actors" not in rs:
+    # GitHub returns the bypass list only to admins of the target repo,
+    # a read token never gets the key. No way to check it here, and a
+    # bypass list without the deploy key fails the push loudly rather
+    # than silently, so note it and keep checking the rest.
+    open(sys.argv[2], "w").write("1")
+    sys.stderr.write("repo-verify-lock: note: ruleset %s: bypass list not visible to this token\n" % rid)
+else:
+    actors = [a.get("actor_type") for a in rs["bypass_actors"]]
+    if actors != ["DeployKey"]:
+        print("ruleset %s: bypass actors %r, want exactly [DeployKey]" % (rid, actors))
+' "$rid" "$work/bypass_unverified" <"$work/ruleset.json" >>"$problems"
 done
 
 if [ ! -s "$problems" ]; then
-    say "$repo@$branch: locked (update, deletion, non_fast_forward; bypass = DeployKey)"
+    if [ -f "$work/bypass_unverified" ]; then
+        say "$repo@$branch: locked (update, deletion, non_fast_forward; bypass checked at push time)"
+    else
+        say "$repo@$branch: locked (update, deletion, non_fast_forward; bypass = DeployKey)"
+    fi
     exit 0
 fi
 

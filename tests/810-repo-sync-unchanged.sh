@@ -83,18 +83,30 @@ cat >"$TMPD/bin/ghapi" <<EOF
 #!/bin/sh
 [ "\$1" = api ] || exit 64
 case "\$2" in
-    repos/alperien/chy-corpus) printf '{"default_branch":"main"}\n' ;;
-    repos/alperien/chy-corpus/rules/branches/main) cat "$TMPD/rules.json" ;;
-    repos/alperien/chy-corpus/rulesets/9) cat "$TMPD/ruleset.json" ;;
+    repos/alperien/chy-recipes) printf '{"default_branch":"main"}\n' ;;
+    repos/alperien/chy-recipes/rules/branches/main) cat "$TMPD/rules.json" ;;
+    repos/alperien/chy-recipes/rulesets/9) cat "$TMPD/ruleset.json" ;;
     *) exit 64 ;;
 esac
 EOF
 chmod 755 "$TMPD/bin/ghapi"
 
-run sh ci/repo-verify-lock.sh --repo alperien/chy-corpus \
+run sh ci/repo-verify-lock.sh --repo alperien/chy-recipes \
     --gh "$TMPD/bin/ghapi"
 assert_rc 0 'verify-lock accepts the pinned ruleset'
 file_has "$OUT" 'locked'
+
+# a read token: GitHub omits bypass_actors for non-admins of the target
+# repo. Rules and enforcement still verify; the bypass list is checked
+# by the push itself, so this passes with a note instead of failing.
+cat >"$TMPD/ruleset.json" <<'EOF'
+{"id":9,"enforcement":"active"}
+EOF
+run sh ci/repo-verify-lock.sh --repo alperien/chy-recipes \
+    --gh "$TMPD/bin/ghapi"
+assert_rc 0 'a redacted bypass list must not fail the check'
+file_has "$OUT" 'bypass checked at push time'
+file_has "$ERR" 'not visible to this token'
 
 # loosened flavor 1: a second bypass actor sneaks in
 cat >"$TMPD/ruleset.json" <<'EOF'
@@ -102,7 +114,7 @@ cat >"$TMPD/ruleset.json" <<'EOF'
  "bypass_actors":[{"actor_id":0,"actor_type":"DeployKey","bypass_mode":"always"},
                   {"actor_id":1,"actor_type":"Integration","bypass_mode":"always"}]}
 EOF
-run sh ci/repo-verify-lock.sh --repo alperien/chy-corpus \
+run sh ci/repo-verify-lock.sh --repo alperien/chy-recipes \
     --gh "$TMPD/bin/ghapi" --decisions "$TMPD/dec-lock"
 assert_rc 2 'a loosened bypass list must not pass'
 file_has "$ERR" 'bypass actors'
@@ -117,7 +129,7 @@ EOF
 cat >"$TMPD/rules.json" <<'EOF'
 [{"type":"update","ruleset_id":9},{"type":"non_fast_forward","ruleset_id":9}]
 EOF
-run sh ci/repo-verify-lock.sh --repo alperien/chy-corpus \
+run sh ci/repo-verify-lock.sh --repo alperien/chy-recipes \
     --gh "$TMPD/bin/ghapi"
 assert_rc 2 'a missing rule must not pass'
 file_has "$ERR" 'missing rule: deletion'
