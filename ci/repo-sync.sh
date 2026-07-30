@@ -1,13 +1,13 @@
 #!/bin/sh
-# ci/corpus-sync.sh - decide what the scheduled sync of the default recipe repo does.
+# ci/repo-sync.sh - decide what the scheduled sync of the default recipe repo does.
 #
-# The pure half of the seam: reads a snapshot, a checkout of the default recipe repo, the
-# package set, and the translator; stages the checkout on a clean run and
-# writes its verdict under --decisions. Never commits, never pushes, never
-# talks to GitHub; ci/corpus-apply.sh acts on the verdict. Offline,
-# deterministic, safe to run anywhere.
+# The pure half of the seam: reads a snapshot, a checkout of the
+# default recipe repo, the package set, and the translator, stages the
+# checkout on a clean run and writes its verdict under --decisions.
+# Never commits, never pushes, never talks to GitHub, ci/repo-apply.sh
+# acts on the verdict. Offline, deterministic, runs anywhere.
 #
-#   corpus-sync.sh --snapshot DIR --corpus DIR --set FILE \
+#   repo-sync.sh --snapshot DIR --repo DIR --set FILE \
 #                  --decisions DIR --translator DIR
 #
 # Verdict files (exactly one of commit.msg / nochange, plus issues/):
@@ -26,15 +26,15 @@
 # nonzero only when this script itself cannot do its job.
 set -eu
 
-say() { printf 'corpus-sync: %s\n' "$1"; }
-die() { printf 'corpus-sync: error: %s\n' "$1" >&2; exit 1; }
+say() { printf 'repo-sync: %s\n' "$1"; }
+die() { printf 'repo-sync: error: %s\n' "$1" >&2; exit 1; }
 
-snap='' corpus='' set_file='' decisions='' translator=''
+snap='' repo='' set_file='' decisions='' translator=''
 while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || die "$1 needs a value"
     case $1 in
         --snapshot)   snap=$2 ;;
-        --corpus)     corpus=$2 ;;
+        --repo)     repo=$2 ;;
         --set)        set_file=$2 ;;
         --decisions) decisions=$2 ;;
         --translator) translator=$2 ;;
@@ -42,14 +42,14 @@ while [ $# -gt 0 ]; do
     esac
     shift 2
 done
-if [ -z "$snap" ] || [ -z "$corpus" ] || [ -z "$set_file" ] \
+if [ -z "$snap" ] || [ -z "$repo" ] || [ -z "$set_file" ] \
     || [ -z "$decisions" ] || [ -z "$translator" ]; then
-    die 'usage: --snapshot DIR --corpus DIR --set FILE --decisions DIR --translator DIR'
+    die 'usage: --snapshot DIR --repo DIR --set FILE --decisions DIR --translator DIR'
 fi
 [ -f "$set_file" ] || die "no such set file: $set_file"
 [ -f "$translator/chytrans" ] || die "no translator at $translator/chytrans"
-git -C "$corpus" rev-parse --git-dir >/dev/null 2>&1 \
-    || die "not a git checkout: $corpus"
+git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
+    || die "not a git checkout: $repo"
 command -v python3 >/dev/null 2>&1 || die 'missing tool: python3'
 
 work=$(mktemp -d) || die 'mktemp -d failed'
@@ -70,16 +70,17 @@ while IFS= read -r line; do
 done <"$set_file"
 [ $# -gt 0 ] || die "no package names in $set_file"
 
-# seed the out-root with each existing repo recipe whose package is still
-# in the set, plus every handwritten exception (modes included). The
-# translator regenerates translated recipes wholesale and preserves the
-# handwritten and soak-deferred ones it is seeded, so a deferred package's
-# recipe survives instead of vanishing. A package dropped from the set is NOT
-# seeded, so it is pruned from the repo on this sync rather than copied back.
+# seed the out-root with each existing repo recipe whose package is
+# still in the set, plus every handwritten exception (modes included).
+# The translator regenerates translated recipes wholesale and keeps the
+# handwritten and soak-deferred ones it's seeded, so a deferred
+# package's recipe survives instead of vanishing. A package dropped
+# from the set is NOT seeded, so this sync prunes it instead of copying
+# it back.
 set_names=' '
 for sn in "$@"; do set_names="$set_names$sn "; done
 mkdir -p "$out/recipes"
-for meta in "$corpus"/recipes/*/meta; do
+for meta in "$repo"/recipes/*/meta; do
     [ -f "$meta" ] || continue
     dir=${meta%/meta}
     name=${dir##*/}
@@ -98,7 +99,7 @@ report="$out/report"
 
 # provenance from the snapshot MANIFEST: the void master is the commit
 # common/shlibs was fetched at, the slice digest is the repodata line
-# (the one whose commit field is "-"); both ride in messages, never files
+# (the one whose commit field is "-"), both ride in messages, never files
 manifest="$snap/MANIFEST"
 master12='' slice12=''
 if [ -f "$manifest" ]; then
@@ -169,16 +170,16 @@ fi
 #     the four repo-level files; README.md is not ours), stage it, and
 #     let the staged diff decide ---
 
-rm -rf "$corpus/recipes"
-cp -Rp "$out/recipes" "$corpus/recipes"
+rm -rf "$repo/recipes"
+cp -Rp "$out/recipes" "$repo/recipes"
 for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
     [ -f "$out/$f" ] || die "translate wrote no $f"
-    cp -p "$out/$f" "$corpus/$f"
+    cp -p "$out/$f" "$repo/$f"
 done
-git -C "$corpus" add -A
+git -C "$repo" add -A
 
 dr=0
-git -C "$corpus" diff --cached --quiet || dr=$?
+git -C "$repo" diff --cached --quiet || dr=$?
 case $dr in
     0)
         printf 'unchanged\n' >"$decisions/nochange"

@@ -1,15 +1,15 @@
 #!/bin/sh
-# ci/corpus-apply.sh - act on a corpus-sync verdict (step 5).
+# ci/repo-apply.sh - act on a repo-sync verdict (step 5).
 #
 # The only side-effectful half of the seam: pushes the repo commit
-# that ci/corpus-sync.sh staged, and runs the issue lifecycle through
+# that ci/repo-sync.sh staged, and runs the issue lifecycle through
 # $gh. It executes decisions, it never makes them.
 #
-#   corpus-apply.sh --decisions DIR --corpus DIR --issue-repo OWNER/REPO \
+#   repo-apply.sh --decisions DIR --repo DIR --issue-repo OWNER/REPO \
 #                   [--gh CMD]
 #
 # commit.msg present: commit the staged index as github-actions[bot],
-# push HEAD:main, then close any open `corpus-sync: refused: <name>`
+# push HEAD:main, then close any open `repo-sync: refused: <name>`
 # whose package the new report shows translated (auto-close; it rides
 # a push because a fixed package re-emits its recipe, which moves the
 # repo; the byte-identical corner waits for the next real commit).
@@ -21,27 +21,27 @@
 # --gh names a single command (a stub in the dry-run tests, default gh).
 set -eu
 
-say() { printf 'corpus-apply: %s\n' "$1"; }
-die() { printf 'corpus-apply: error: %s\n' "$1" >&2; exit 1; }
+say() { printf 'repo-apply: %s\n' "$1"; }
+die() { printf 'repo-apply: error: %s\n' "$1" >&2; exit 1; }
 
-decisions='' corpus='' issue_repo='' gh=gh
+decisions='' repo='' issue_repo='' gh=gh
 while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || die "$1 needs a value"
     case $1 in
         --decisions) decisions=$2 ;;
-        --corpus)     corpus=$2 ;;
+        --repo)     repo=$2 ;;
         --issue-repo) issue_repo=$2 ;;
         --gh)         gh=$2 ;;
         *) die "unknown argument: $1" ;;
     esac
     shift 2
 done
-if [ -z "$decisions" ] || [ -z "$corpus" ] || [ -z "$issue_repo" ]; then
-    die 'usage: --decisions DIR --corpus DIR --issue-repo OWNER/REPO [--gh CMD]'
+if [ -z "$decisions" ] || [ -z "$repo" ] || [ -z "$issue_repo" ]; then
+    die 'usage: --decisions DIR --repo DIR --issue-repo OWNER/REPO [--gh CMD]'
 fi
 [ -d "$decisions" ] || die "no decisions directory: $decisions"
-git -C "$corpus" rev-parse --git-dir >/dev/null 2>&1 \
-    || die "not a git checkout: $corpus"
+git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
+    || die "not a git checkout: $repo"
 
 bot_name='github-actions[bot]'
 bot_mail='41898282+github-actions[bot]@users.noreply.github.com'
@@ -50,11 +50,11 @@ bot_mail='41898282+github-actions[bot]@users.noreply.github.com'
 
 pushed=0
 if [ -f "$decisions/commit.msg" ]; then
-    git -C "$corpus" -c user.name="$bot_name" -c user.email="$bot_mail" \
+    git -C "$repo" -c user.name="$bot_name" -c user.email="$bot_mail" \
         commit --quiet -F "$decisions/commit.msg"
-    git -C "$corpus" push origin HEAD:main
+    git -C "$repo" push origin HEAD:main
     pushed=1
-    say "pushed: $(git -C "$corpus" log -1 --format=%s)"
+    say "pushed: $(git -C "$repo" log -1 --format=%s)"
 fi
 
 # --- the issue lifecycle ---
@@ -100,9 +100,9 @@ for f in "$decisions/issues"/*.md; do
     case $base in
         refused-*.md)
             name=${base#refused-}; name=${name%.md}
-            title="corpus-sync: refused: $name" ;;
-        infra.md) title='corpus-sync: infrastructure failure' ;;
-        lock.md) title='corpus-sync: corpus lock loosened' ;;
+            title="repo-sync: refused: $name" ;;
+        infra.md) title='repo-sync: infrastructure failure' ;;
+        lock.md) title='repo-sync: repo lock loosened' ;;
         *) die "unrecognized decision issue: $base" ;;
     esac
     want=$(sed -n 's/^reason-hash: //p' "$f" | head -n 1)
@@ -124,13 +124,13 @@ done
 # auto-close after a push: an open refusal whose package the freshly
 # committed report shows translated is fixed
 if [ "$pushed" -eq 1 ]; then
-    [ -f "$corpus/report" ] || die "no report in $corpus after a push"
+    [ -f "$repo/report" ] || die "no report in $repo after a push"
     while IFS=$tab read -r num _ title; do
-        case $title in 'corpus-sync: refused: '*) ;; *) continue ;; esac
-        name=${title#corpus-sync: refused: }
-        grep -Fqx "translated: $name" "$corpus/report" || continue
+        case $title in 'repo-sync: refused: '*) ;; *) continue ;; esac
+        name=${title#repo-sync: refused: }
+        grep -Fqx "translated: $name" "$repo/report" || continue
         "$gh" issue close "$num" --repo "$issue_repo" \
-            --comment "corpus-sync: $name translated cleanly again; closing."
+            --comment "repo-sync: $name translated cleanly again; closing."
         say "closed: $title"
     done <"$work/issues.tsv"
 fi

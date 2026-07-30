@@ -1,4 +1,4 @@
-# xbps packages the corpus job installs: provided.suggested hints +
+# xbps packages the acceptance job installs: provided.suggested hints +
 # toolchain + firefox runtime deps (host-provided path).
 MesaLib-devel
 SPIRV-LLVM-Translator21

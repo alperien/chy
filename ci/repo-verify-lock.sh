@@ -1,22 +1,22 @@
 #!/bin/sh
-# ci/corpus-verify-lock.sh - assert the default recipe repo's branch lock.
+# ci/repo-verify-lock.sh - assert the default recipe repo's branch lock.
 #
-# Bot-only is enforced, not suggested: the repo's default branch must
-# carry active rules restricting updates, restricting deletions, and
-# blocking force pushes, with exactly the deploy key as bypass actor.
-# Every scheduled run verifies this through `$gh api` before touching
-# the repo; a loosened lock is reported, never proceeded past.
+# The repo's default branch has to carry active rules restricting
+# updates, restricting deletions, and blocking force pushes, with
+# exactly the deploy key as bypass actor. Every scheduled run checks
+# this through `$gh api` before touching the repo, a loosened lock is
+# reported and never proceeded past.
 #
-#   corpus-verify-lock.sh --repo OWNER/REPO [--gh CMD] [--decisions DIR]
+#   repo-verify-lock.sh --repo OWNER/REPO [--gh CMD] [--decisions DIR]
 #
-# Exit 0: locked. Exit 2: loosened; problems go to stderr, and with
-# --decisions an issues/lock.md decision is written for corpus-apply.sh
+# Exit 0: locked. Exit 2: loosened, problems go to stderr, and with
+# --decisions an issues/lock.md decision is written for repo-apply.sh
 # (the workflow then skips sync and applies only the issue). Any other
-# nonzero exit means the check itself could not run.
+# nonzero exit means the check itself couldn't run.
 set -eu
 
-say() { printf 'corpus-verify-lock: %s\n' "$1"; }
-die() { printf 'corpus-verify-lock: error: %s\n' "$1" >&2; exit 1; }
+say() { printf 'repo-verify-lock: %s\n' "$1"; }
+die() { printf 'repo-verify-lock: error: %s\n' "$1" >&2; exit 1; }
 
 repo='' gh=gh decisions=''
 while [ $# -gt 0 ]; do
@@ -85,7 +85,7 @@ if [ ! -s "$problems" ]; then
     exit 0
 fi
 
-sed "s/^/corpus-verify-lock: $branch: /" "$problems" >&2
+sed "s/^/repo-verify-lock: $branch: /" "$problems" >&2
 if [ -n "$decisions" ]; then
     mkdir -p "$decisions/issues"
     {

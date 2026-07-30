@@ -6,7 +6,7 @@
 # One-time setup by hand: create alperien/chy-corpus,
 # add a write deploy key there, store its private key as the CORPUS_DEPLOY_KEY
 # secret here, and lock its default branch to that key.
-name: corpus-sync
+name: repo-sync
 
 on:
   schedule:
@@ -24,7 +24,7 @@ permissions:
   actions: write                  # keepalive (re-enable the schedule)
 
 concurrency:
-  group: corpus-sync
+  group: repo-sync
   cancel-in-progress: false
 
 jobs:
@@ -40,17 +40,17 @@ jobs:
         with:
           repository: alperien/chy-corpus
           ssh-key: ${{ secrets.CORPUS_DEPLOY_KEY }}
-          path: corpus
+          path: repo
 
       - name: verify the repo lock
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p decisions
-          if ! sh ci/corpus-verify-lock.sh --repo alperien/chy-corpus --decisions decisions; then
+          if ! sh ci/repo-verify-lock.sh --repo alperien/chy-corpus --decisions decisions; then
             RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             find decisions -type f -exec sed -i "s#RUN_URL#$RUN_URL#g" {} +
-            sh ci/corpus-apply.sh --decisions decisions --corpus corpus --issue-repo ${{ github.repository }}
+            sh ci/repo-apply.sh --decisions decisions --repo repo --issue-repo ${{ github.repository }}
             echo "repo lock is loosened; filed an issue and stopped." >&2
             exit 1
           fi
@@ -61,7 +61,7 @@ jobs:
         run: python3 translator/chytrans snapshot --out snap $(grep -v '^#' default.set)
 
       - name: translate and decide (offline, deterministic)
-        run: sh ci/corpus-sync.sh --snapshot snap --corpus corpus --set default.set --decisions decisions --translator translator
+        run: sh ci/repo-sync.sh --snapshot snap --repo repo --set default.set --decisions decisions --translator translator
 
       - name: show the decision
         if: always()
@@ -74,10 +74,10 @@ jobs:
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           find decisions -type f -exec sed -i "s#RUN_URL#$RUN_URL#g" {} +
-          sh ci/corpus-apply.sh --decisions decisions --corpus corpus --issue-repo ${{ github.repository }}
+          sh ci/repo-apply.sh --decisions decisions --repo repo --issue-repo ${{ github.repository }}
 
       - name: keepalive (reset the 60-day schedule-disable timer)
         if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/corpus-sync.yml/enable"
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/repo-sync.yml/enable"

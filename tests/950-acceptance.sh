@@ -7,14 +7,14 @@
 # NEEDED vs each recipe's expect-needed ledger), chy doctor, and the
 # the payoff: Mozilla's binary launching in a rootless prefix.
 #
-# Gated: run only when CHY_CORPUS=1 (the CI acceptance job sets it); the
+# Gated: run only when CHY_ACCEPT=1 (the CI acceptance job sets it); the
 # regular suite SKIPs it loudly. Expects the host packages listed in
-# tests/corpus-hostpkgs (the Void container installs them).
+# tests/acceptance-hostpkgs (the Void container installs them).
 set -u
 
-[ "${CHY_CORPUS:-}" = 1 ] || { echo "SKIP: CHY_CORPUS not set"; exit 0; }
+[ "${CHY_ACCEPT:-}" = 1 ] || { echo "SKIP: CHY_ACCEPT not set"; exit 0; }
 for t in cc make readelf python3; do
-    command -v "$t" >/dev/null 2>&1 || { echo "corpus: missing $t"; exit 1; }
+    command -v "$t" >/dev/null 2>&1 || { echo "acceptance: missing $t"; exit 1; }
 done
 
 repo=$(pwd)
@@ -26,19 +26,18 @@ export CHY_ROOT
 mkdir -p "$CHY_ROOT/db"
 cp -R "$repo/recipes" "$CHY_ROOT/recipes"
 cp "$repo/shlibs.map" "$CHY_ROOT/shlibs.map"
-# provided = everything the default repo closure needs that we do not build:
-# the first column of provided.suggested, plus firefox's manual extras.
+# provided = everything the closure needs that we don't build: first
+# column of provided.suggested, plus firefox's manual extras.
 awk 'NF {print $1}' "$repo/provided.suggested" > "$CHY_ROOT/db/provided"
 printf 'alsa-lib\ngcc\n' >> "$CHY_ROOT/db/provided"
 
 echo "== install firefox (binary kind) =="
-# firefox's 21 runtime deps are the gtk+3 stack; they
-# are "built OR declared host-provided". Here the host (the Void
-# container, via xbps) provides them. This is the provided model at
-# full scale, and it exercises exactly the new machinery: binary-kind
-# relocation, the launcher, runtime verification, doctor, and launch.
-# (The full FROM-SOURCE default repo build is deferred: it surfaced a real
-# translator gap: per-patch strip levels.)
+# firefox's 21 runtime deps are the gtk+3 stack, "built OR declared
+# host-provided". Here the host (the Void container, via xbps) provides
+# them: the provided model at full scale, and it hits exactly the new
+# machinery: binary-kind relocation, the launcher, runtime
+# verification, doctor, launch. (The full FROM-SOURCE build is
+# deferred, it surfaced a real translator gap: per-patch strip levels.)
 awk 'NF {print $1}' "$repo/recipes/firefox/depends" > "$CHY_ROOT/db/provided"
 
 if ! sh chy/chy install firefox > "$work/out" 2> "$work/err"; then

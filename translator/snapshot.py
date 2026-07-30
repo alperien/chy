@@ -4,7 +4,7 @@ create() is the only networked code in the translator: it fetches Void's
 x86_64-repodata, common/shlibs at the current master commit, and each
 requested package's srcpkgs/<name>/ tree at its pinned source-revisions
 commit (shallow, sparse, blob-filtered git fetch).
-The corpus-sync pieces live here too, all creation-side: the soak verdicts
+The repo-sync pieces live here too, all creation-side: the soak verdicts
 (snapshot/soak, from the mirror's HEAD timestamps and the commits-API
 committer date), the kill switch (translator/PIN -> snapshot/pin, one
 fetch at the pin), and the authenticated GitHub API. load() is

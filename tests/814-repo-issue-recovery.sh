@@ -1,11 +1,11 @@
 #!/bin/sh
 # 814: recovery auto-close.
 #
-# The stub's canned list shows two open refusal issues: zlib (in the set,
-# translating cleanly again) and notinset (not in this repo at all).
-# A clean changed run pushes, and corpus-apply.sh must close exactly the
-# issue whose package the freshly committed report shows translated:
-# one `issue close` for zlib, nothing for notinset, no creates.
+# The stub's canned list shows two open refusal issues: zlib (in the
+# set, translating cleanly again) and notinset (not in this repo at
+# all). A clean changed run pushes, and repo-apply.sh closes exactly
+# the issue whose package the fresh report shows translated: one
+# `issue close` for zlib, nothing for notinset, no creates.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -19,28 +19,28 @@ t_init
 umask 022
 g=translator/tests/golden
 
-git init -q --bare "$TMPD/corpus.git"
-git -C "$TMPD/corpus.git" symbolic-ref HEAD refs/heads/main
-git clone -q "$TMPD/corpus.git" "$TMPD/corpus" 2>/dev/null
-git -C "$TMPD/corpus" symbolic-ref HEAD refs/heads/main
-cp -R "$g/expected/recipes" "$TMPD/corpus/recipes"
+git init -q --bare "$TMPD/repo.git"
+git -C "$TMPD/repo.git" symbolic-ref HEAD refs/heads/main
+git clone -q "$TMPD/repo.git" "$TMPD/repo" 2>/dev/null
+git -C "$TMPD/repo" symbolic-ref HEAD refs/heads/main
+cp -R "$g/expected/recipes" "$TMPD/repo/recipes"
 for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
-    cp "$g/expected/$f" "$TMPD/corpus/$f"
+    cp "$g/expected/$f" "$TMPD/repo/$f"
 done
-printf 'chy default repo (generated)\n' >"$TMPD/corpus/README.md"
-chmod 755 "$TMPD/corpus"/recipes/*/build
+printf 'chy default repo (generated)\n' >"$TMPD/repo/README.md"
+chmod 755 "$TMPD/repo"/recipes/*/build
 # the stale recipe a past refusal kept pinned; today's run replaces it
-printf '0.0 1\n' >"$TMPD/corpus/recipes/zlib/version"
-git -C "$TMPD/corpus" add -A
-git -C "$TMPD/corpus" -c user.name=seed -c user.email=seed@test \
+printf '0.0 1\n' >"$TMPD/repo/recipes/zlib/version"
+git -C "$TMPD/repo" add -A
+git -C "$TMPD/repo" -c user.name=seed -c user.email=seed@test \
     commit -qm 'seed: golden repo, stale zlib'
-git -C "$TMPD/corpus" push -q origin HEAD:main
+git -C "$TMPD/repo" push -q origin HEAD:main
 
 mkdir -p "$TMPD/bin"
 : >"$TMPD/gh.log"
 zeros=$(printf '%064d' 0)
-printf '[{"number":3,"title":"corpus-sync: refused: zlib","body":"reason-hash: %s"},
- {"number":4,"title":"corpus-sync: refused: notinset","body":"reason-hash: %s"}]\n' \
+printf '[{"number":3,"title":"repo-sync: refused: zlib","body":"reason-hash: %s"},
+ {"number":4,"title":"repo-sync: refused: notinset","body":"reason-hash: %s"}]\n' \
     "$zeros" "$zeros" >"$TMPD/issues.json"
 cat >"$TMPD/bin/gh" <<EOF
 #!/bin/sh
@@ -52,18 +52,18 @@ EOF
 chmod 755 "$TMPD/bin/gh"
 
 # --- a clean changed run: translate, stage, prepare the commit ---
-run sh ci/corpus-sync.sh --snapshot "$g/snapshot" --corpus "$TMPD/corpus" \
+run sh ci/repo-sync.sh --snapshot "$g/snapshot" --repo "$TMPD/repo" \
     --set "$g/names" --decisions "$TMPD/dec" --translator translator
 assert_rc 0 'clean sync'
 [ -f "$TMPD/dec/commit.msg" ] || fail 'commit.msg missing on the recovery day'
 assert_absent "$TMPD/dec/issues"
 
 # --- apply: push, then close the recovered refusal and only it ---
-head0=$(git -C "$TMPD/corpus.git" rev-parse refs/heads/main)
-run sh ci/corpus-apply.sh --decisions "$TMPD/dec" --corpus "$TMPD/corpus" \
+head0=$(git -C "$TMPD/repo.git" rev-parse refs/heads/main)
+run sh ci/repo-apply.sh --decisions "$TMPD/dec" --repo "$TMPD/repo" \
     --issue-repo alperien/chy --gh "$TMPD/bin/gh"
 assert_rc 0 'apply on the recovery day'
-[ "$(git -C "$TMPD/corpus.git" rev-parse refs/heads/main)" != "$head0" ] \
+[ "$(git -C "$TMPD/repo.git" rev-parse refs/heads/main)" != "$head0" ] \
     || fail 'the recovery run did not push'
 assert_eq "$(count_matches '^issue close ' "$TMPD/gh.log")" 1 'exactly one close'
 assert_eq "$(count_matches '^issue close 3 ' "$TMPD/gh.log")" 1 'closed the zlib issue'
