@@ -563,7 +563,13 @@ def _create(names, outdir, tmp):
                          " in repodata; left out of the slice\n" % n)
     extra = {n for n in extra if n in index}
     slice_names |= extra | repodata.binary_run_closure(extra, index)
-    slice = {n: index[n] for n in sorted(slice_names)}
+    # a closure member the index doesn't carry (an unresolvable
+    # virtual name, or a package repodata dropped) can't be sliced;
+    # warn like missing_extra above and let translate-time refuse.
+    for n in sorted(n for n in slice_names if n not in index):
+        sys.stderr.write("chytrans: WARNING: closure dependency %s is not"
+                         " in repodata; left out of the slice\n" % n)
+    slice = {n: index[n] for n in sorted(slice_names) if n in index}
 
     slice_path = os.path.join(outdir, "repodata.slice.plist")
     with open(slice_path, "wb") as f:

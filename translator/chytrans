@@ -69,16 +69,23 @@ def _normalize_dump(dump_root, name):
                       os.path.join(pkgdir, entry))
 
 
-def _package_references(name, snap, dump_root, result):
+def _package_references(name, snap, dump_root, result, pmap):
     """Every binary package name this recipe referenced: its repodata
     run_depends, its evaluated hostmakedepends+makedepends, and the
-    Injected tools (parsed; libc and virtual dropped).  Raw
-    material for the provided.suggested hints."""
+    injected tools (parsed; libc dropped, virtual names resolved to
+    their providers when the slice settles them).  Raw material for
+    the provided.suggested hints."""
     refs = set()
     for token in snap.slice[name].get("run_depends", []):
         dep, kind = repodata.parse_dep(token)
-        if kind == "virtual" or dep in repodata.LIBC:
+        if dep in repodata.LIBC:
             continue
+        if repodata.canonical(dep) not in snap.slice:
+            resolved = repodata.resolve_virtual(dep, snap.slice, pmap)
+            if resolved is not None:
+                dep = resolved
+            elif kind == "virtual":
+                continue
         refs.add(dep)
     refs |= snapshot.dump_dep_names(dump_root, name)
     # plus emit's injections, exactly as emitted: injected tools are
@@ -103,9 +110,11 @@ def _provided_contrib(name, result, snap, dump_root):
     names ride along as the install-hint column.  Any lookup that
     misses the slice raises _SliceMiss -> per-package refusal."""
     direct = set(result.depends) | set(result.makedepends)
+    pmap = repodata.providers_map(snap.slice)
     hints = {}
     walk = []
-    for binary in sorted(_package_references(name, snap, dump_root, result)):
+    for binary in sorted(_package_references(name, snap, dump_root, result,
+                                             pmap)):
         src = repodata.flatten(binary, snap.slice)
         if src is None:
             raise _SliceMiss(binary)
@@ -127,14 +136,20 @@ def _provided_contrib(name, result, snap, dump_root):
             raise _SliceMiss(binary)
         for token in entry.get("run_depends", []):
             dep, kind = repodata.parse_dep(token)
-            if kind == "virtual":
-                # Not resolvable; none occur in the
-                # default repo closure.  Warn and keep going.
-                sys.stderr.write("chytrans: warning: %s: skipping virtual"
-                                 " dependency %s in provided closure\n"
-                                 % (name, token))
+            if dep in repodata.LIBC:
                 continue
-            if dep in repodata.LIBC or dep in seen:
+            if repodata.canonical(dep) not in snap.slice:
+                resolved = repodata.resolve_virtual(dep, snap.slice, pmap)
+                if resolved is not None:
+                    dep = resolved
+                elif kind == "virtual":
+                    # No provider the slice settles; hint material
+                    # only, so warn and keep going.
+                    sys.stderr.write("chytrans: warning: %s: skipping"
+                                     " virtual dependency %s in provided"
+                                     " closure\n" % (name, token))
+                    continue
+            if dep in seen:
                 continue
             seen.add(dep)
             src = repodata.flatten(dep, snap.slice)

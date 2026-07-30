@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>fwprov</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>fwprov-1.0_1</string>
+		<key>provides</key>
+		<array>
+			<string>fakefw-1_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>fwprov:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>gapp</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>gapp-1.0_1</string>
+		<key>run_depends</key>
+		<array>
+			<string>libFAKE&gt;=1.0_1</string>
+			<string>virtual?fakefw&gt;=0</string>
+		</array>
+		<key>source-revisions</key>
+		<string>gapp:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>glprov</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>glprov-1.0_1</string>
+		<key>provides</key>
+		<array>
+			<string>libFAKE-1.0_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>glprov:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+</dict>
+</plist>

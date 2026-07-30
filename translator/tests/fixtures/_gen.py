@@ -53,10 +53,12 @@ def fake_sha(token):
     return hashlib.sha256(("chytrans-fixture:" + token).encode()).hexdigest()
 
 
-def E(name, ver="1.0_1", src=None, run=None, provides=None, requires=None):
+def E(name, ver="1.0_1", src=None, run=None, provides=None, requires=None,
+      vprovides=None):
     """One repodata slice entry, shaped like Void's index entries:
     pkgver, source-revisions ("<srcpkg>:<commit>"), optional run_depends /
-    shlib-provides / shlib-requires (omitted when empty, as xbps does)."""
+    shlib-provides / shlib-requires / provides (virtual packages;
+    omitted when empty, as xbps does)."""
     d = {
         "architecture": "x86_64",
         "pkgver": "%s-%s" % (name, ver),
@@ -68,6 +70,8 @@ def E(name, ver="1.0_1", src=None, run=None, provides=None, requires=None):
         d["shlib-provides"] = list(provides)
     if requires:
         d["shlib-requires"] = list(requires)
+    if vprovides:
+        d["provides"] = list(vprovides)
     return name, d
 
 
@@ -237,7 +241,8 @@ def case_01():
 
 
 def case_02():
-    # a virtual? dependency is a refusal.
+    # a virtual? dependency nothing in the slice provides is a
+    # refusal (36/38 cover the resolvable flavors).
     c = Case("02-refuse-virtual")
     c.names("vapp")
     c.template("vapp", tmpl("vapp"))
@@ -1123,6 +1128,73 @@ def case_35_soak_defer():
         "file-count :: report :: deferred: :: 2\n"
         "exists :: recipes/aged/build\n"
         "absent :: recipes/young\n"
+    )
+    c.finish()
+
+
+# virtual-package resolution cases
+
+def case_36_virtual_resolved():
+    # names with no slice entry of their own resolve through the
+    # slice's 'provides' entries: an implicit virtual (libFAKE, the
+    # libEGL/libglvnd shape) and an explicit virtual? token both land
+    # on their single provider's source package, in depends and in the
+    # provided.suggested hints.
+    c = Case("36-virtual-resolved")
+    c.names("gapp")
+    c.template("gapp", tmpl("gapp"))
+    c.slice(
+        E("gapp", run=["libFAKE>=1.0_1", "virtual?fakefw>=0"]),
+        E("glprov", vprovides=["libFAKE-1.0_1"]),
+        E("fwprov", vprovides=["fakefw-1_1"]),
+    )
+    c.expect("recipes/gapp/depends", "fwprov\nglprov\n")
+    c.expect("provided.suggested", "fwprov fwprov\nglprov glprov\n")
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: report :: translated: gapp\n"
+        "file-line :: recipes/gapp/meta :: origin: translated\n"
+    )
+    c.finish()
+
+
+def case_37_refuse_virtual_ambiguous():
+    # two source packages providing the same virtual name, with no
+    # reviewed default to settle it, is its own refusal naming the
+    # providers.
+    c = Case("37-refuse-virtual-ambiguous")
+    c.names("aapp")
+    c.template("aapp", tmpl("aapp"))
+    c.slice(
+        E("aapp", run=["libAMB>=1_1"]),
+        E("prov1", vprovides=["libAMB-1_1"]),
+        E("prov2", vprovides=["libAMB-1_1"]),
+    )
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: aapp :: ambiguous\n"
+        "file-matches :: report :: ^refused: aapp:.*libAMB\n"
+        "absent :: recipes/aapp\n"
+    )
+    c.finish()
+
+
+def case_38_virtual_default_awk():
+    # an ambiguity the reviewed default table settles: awk has several
+    # providers and resolves to gawk, Void's own default.
+    c = Case("38-virtual-default-awk")
+    c.names("wapp")
+    c.template("wapp", tmpl("wapp"))
+    c.slice(
+        E("wapp", run=["awk>=1_1"]),
+        E("gawk", vprovides=["awk-1_1"]),
+        E("mawk", vprovides=["awk-1_1"]),
+    )
+    c.expect("recipes/wapp/depends", "gawk\n")
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: report :: translated: wapp\n"
+        "file-line :: recipes/wapp/depends :: gawk\n"
     )
     c.finish()
 

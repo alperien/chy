@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>gawk</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>gawk-1.0_1</string>
+		<key>provides</key>
+		<array>
+			<string>awk-1_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>gawk:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>mawk</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>mawk-1.0_1</string>
+		<key>provides</key>
+		<array>
+			<string>awk-1_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>mawk:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>wapp</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>wapp-1.0_1</string>
+		<key>run_depends</key>
+		<array>
+			<string>awk&gt;=1_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>wapp:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+</dict>
+</plist>

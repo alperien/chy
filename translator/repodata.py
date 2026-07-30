@@ -71,6 +71,65 @@ def flatten(name, slice):
     return src or None
 
 
+# Ambiguous virtual names with a reviewed default provider, the
+# virtual-package analogue of _NAME_MAP: Void resolves these through
+# etc/defaults.virtualpkg, which isn't snapshot material, so the
+# default is copied here.  Growing this table is a golden-diff
+# review, like the idiom set.
+_VIRTUAL_DEFAULTS = {
+    "awk": "gawk",
+}
+
+
+def providers_map(slice):
+    """{virtual name -> set of provider binary names}, from every
+    entry's repodata 'provides' list (tokens like 'libEGL-7.11_1').
+    Build once per slice and hand to resolve_virtual; the map is a
+    pure function of the slice."""
+    pmap = {}
+    for binary in slice:
+        for token in slice[binary].get("provides", []) or []:
+            name, _kind = parse_dep(token)
+            pmap.setdefault(name, set()).add(binary)
+    return pmap
+
+
+def virtual_sources(name, slice, pmap):
+    """The SOURCE packages providing a virtual name, sorted.  Empty =
+    nothing in the slice provides it."""
+    sources = set()
+    for binary in pmap.get(name, ()):
+        src = flatten(binary, slice)
+        if src is not None:
+            sources.add(src)
+    return sorted(sources)
+
+
+def resolve_virtual(name, slice, pmap):
+    """A name with no slice entry of its own -> a provider binary name
+    via the slice's 'provides' entries, or None.  Deterministic: one
+    providing source package wins outright; several fall back to the
+    reviewed default table; no provider, or an ambiguity the table
+    doesn't settle, is None (the caller decides how to refuse).
+    Within the chosen source the byte-smallest provider binary is
+    returned."""
+    by_source = {}
+    for binary in pmap.get(name, ()):
+        src = flatten(binary, slice)
+        if src is not None:
+            by_source.setdefault(src, set()).add(binary)
+    if not by_source:
+        return None
+    if len(by_source) == 1:
+        return min(next(iter(by_source.values())))
+    default = _VIRTUAL_DEFAULTS.get(name)
+    if default is not None:
+        for src, binaries in by_source.items():
+            if default == src or default in binaries:
+                return min(binaries)
+    return None
+
+
 def source_commit(name, slice):
     """The pinned void-packages commit for a name's source package,
     from 'source-revisions' ("srcpkg:commit"); None on a miss."""
@@ -83,13 +142,15 @@ def source_commit(name, slice):
 
 def binary_run_closure(names, slice):
     """Transitive repodata run_depends of `names`, as BINARY package
-    names.  The inputs themselves are not included (unless reached via
+    names.  The inputs themselves aren't included (unless reached via
     some other member's dependency chain).  The libc is dropped before
-    expansion; 'virtual?' tokens cannot be resolved and are skipped
-.  Names absent
-    from the slice are kept in the result but not expanded: at snapshot
-    time the slice is the full index so nothing misses, and at translate
-    time the caller detects the miss via flatten() and refuses."""
+    expansion.  A dependency with no slice entry of its own resolves
+    through the slice's 'provides' entries (the Void virtual-package
+    model); an unresolvable 'virtual?' token is skipped, and any other
+    unresolvable name is kept in the result but not expanded, so the
+    caller detects the miss and refuses (or, at snapshot time, warns
+    and drops it from the slice)."""
+    pmap = providers_map(slice)
     seen = set()
     stack = sorted(names)
     while stack:
@@ -99,7 +160,15 @@ def binary_run_closure(names, slice):
             continue
         for token in entry.get("run_depends", []):
             dep, kind = parse_dep(token)
-            if kind == "virtual" or dep in LIBC or dep in seen:
+            if dep in LIBC:
+                continue
+            if canonical(dep) not in slice:
+                resolved = resolve_virtual(dep, slice, pmap)
+                if resolved is not None:
+                    dep = resolved
+                elif kind == "virtual":
+                    continue
+            if dep in seen:
                 continue
             seen.add(dep)
             stack.append(dep)

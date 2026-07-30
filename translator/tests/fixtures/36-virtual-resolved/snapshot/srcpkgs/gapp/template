@@ -1,0 +1,11 @@
+# Template file for 'gapp'
+pkgname=gapp
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/gapp"
+distfiles="https://example.org/dist/gapp-${version}.tar.gz"
+checksum=84af047a19035c7dec2aa629adfa844a5a186a1ebba9f386ce9a0a2e807e7c18

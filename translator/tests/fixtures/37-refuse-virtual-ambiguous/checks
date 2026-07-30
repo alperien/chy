@@ -1,0 +1,4 @@
+exit :: 1
+stderr-refusal :: aapp :: ambiguous
+file-matches :: report :: ^refused: aapp:.*libAMB
+absent :: recipes/aapp

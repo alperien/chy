@@ -1,0 +1,11 @@
+# Template file for 'wapp'
+pkgname=wapp
+version=1.0
+revision=1
+build_style=gnu-configure
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/wapp"
+distfiles="https://example.org/dist/wapp-${version}.tar.gz"
+checksum=5bd1fa09fd190677338e28f173ce64a8a0318e0030f5a5db000ad1f1baf07b7a

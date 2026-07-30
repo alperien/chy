@@ -131,21 +131,33 @@ def _read_dump(dumpdir, name):
 _LIBC = ('glibc', 'musl')
 
 
-def _translate_deps(tokens, slice_, self_name, what):
+def _translate_deps(tokens, slice_, self_name, what, pmap):
     out = set()
     for tok in tokens:
         pname, kind = repodata.parse_dep(tok)
-        if kind == 'virtual':
-            raise Refuse('%s: virtual? dependency %r (not resolved)'
-                         % (what, tok))
         # the libc is dropped BEFORE any slice lookup; no
         # slice carries it
         if pname in _LIBC:
             continue
         src = repodata.flatten(pname, slice_)
         if src is None:
-            raise Refuse('%s: dependency %r not in the snapshot slice'
-                         % (what, pname))
+            # no entry of its own: Void's virtual-package model.
+            # Resolve through the slice's 'provides' entries; an
+            # ambiguity the default table doesn't settle gets its own
+            # refusal, named so the fix is easy to find.
+            resolved = repodata.resolve_virtual(pname, slice_, pmap)
+            if resolved is None:
+                sources = repodata.virtual_sources(pname, slice_, pmap)
+                if len(sources) > 1:
+                    raise Refuse('%s: ambiguous virtual dependency %r'
+                                 ' (providers: %s)'
+                                 % (what, pname, ', '.join(sources)))
+                if kind == 'virtual':
+                    raise Refuse('%s: virtual? dependency %r (not resolved)'
+                                 % (what, tok))
+                raise Refuse('%s: dependency %r not in the snapshot slice'
+                             % (what, pname))
+            src = repodata.flatten(resolved, slice_)
         if src in _LIBC or src == self_name:
             continue
         out.add(src)
@@ -1164,13 +1176,14 @@ def _translate_into(result, name, snap, dumpdir):
         dropped.add('system_accounts')
 
     # dependencies
+    pmap = repodata.providers_map(snap.slice)
     depends = _translate_deps((entry.get('run_depends') or []),
-                              snap.slice, name, 'run_depends')
+                              snap.slice, name, 'run_depends', pmap)
     makedepends = _translate_deps(
         dump['hostmakedepends'].split() + dump['makedepends'].split()
-        + injected, snap.slice, name, 'makedepends')
+        + injected, snap.slice, name, 'makedepends', pmap)
     conflicts = _translate_deps(dump['conflicts'].split(),
-                                snap.slice, name, 'conflicts')
+                                snap.slice, name, 'conflicts', pmap)
 
     # sources, checksums, patches.  The effective commit is where
     # the snapshot fetched the srcpkg tree: the pin when engaged,

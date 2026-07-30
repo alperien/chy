@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>aapp</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>aapp-1.0_1</string>
+		<key>run_depends</key>
+		<array>
+			<string>libAMB&gt;=1_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>aapp:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>prov1</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>prov1-1.0_1</string>
+		<key>provides</key>
+		<array>
+			<string>libAMB-1_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>prov1:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+	<key>prov2</key>
+	<dict>
+		<key>architecture</key>
+		<string>x86_64</string>
+		<key>pkgver</key>
+		<string>prov2-1.0_1</string>
+		<key>provides</key>
+		<array>
+			<string>libAMB-1_1</string>
+		</array>
+		<key>source-revisions</key>
+		<string>prov2:1234567890abcdef1234567890abcdef12345678</string>
+	</dict>
+</dict>
+</plist>
