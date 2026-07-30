@@ -31,11 +31,11 @@ cp -R "$g/expected/recipes" "$TMPD/corpus/recipes"
 for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
     cp "$g/expected/$f" "$TMPD/corpus/$f"
 done
-printf 'chy corpus (generated)\n' >"$TMPD/corpus/README.md"
+printf 'chy default repo (generated)\n' >"$TMPD/corpus/README.md"
 chmod 755 "$TMPD/corpus"/recipes/*/build
 git -C "$TMPD/corpus" add -A
 git -C "$TMPD/corpus" -c user.name=seed -c user.email=seed@test \
-    commit -qm 'seed: golden corpus'
+    commit -qm 'seed: golden repo'
 git -C "$TMPD/corpus" push -q origin HEAD:main
 
 mkdir -p "$TMPD/bin"

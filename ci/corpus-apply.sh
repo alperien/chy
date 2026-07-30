@@ -1,7 +1,7 @@
 #!/bin/sh
 # ci/corpus-apply.sh - act on a corpus-sync verdict (step 5).
 #
-# The only side-effectful half of the seam: pushes the corpus commit
+# The only side-effectful half of the seam: pushes the repo commit
 # that ci/corpus-sync.sh staged, and runs the issue lifecycle through
 # $gh. It executes decisions, it never makes them.
 #
@@ -12,7 +12,7 @@
 # push HEAD:main, then close any open `corpus-sync: refused: <name>`
 # whose package the new report shows translated (auto-close; it rides
 # a push because a fixed package re-emits its recipe, which moves the
-# corpus; the byte-identical corner waits for the next real commit).
+# repo; the byte-identical corner waits for the next real commit).
 # issues/*.md present: open-or-update by exact title, the dedup key. An
 # unchanged reason-hash marker stays silent; a changed one posts one
 # comment and refreshes the body so the marker tracks the live reason.

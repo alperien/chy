@@ -721,10 +721,10 @@ def _classify_hooks(functions, ctx):
 # section 7: path-argument rewriting for configure_args
 # Exactly one --prefix, emitter-supplied.  --sysconfdir -> $CHY_ROOT/etc.
 # --libdir dropped.  Any =/... absolute path: /usr, /etc, /var roots are
-# rewritten under $CHY_ROOT; anything else refuses.  /run is also rewritten,
-# a recorded deviation: enumerates only the three, but dbus's evaluated
-# -Dsystem_socket=/run/... must translate per, and refusing would break
-# the corpus chain (see report).
+# rewritten under $CHY_ROOT; anything else refuses.  /run is rewritten too,
+# a recorded deviation: the list stops at those three, but dbus's evaluated
+# -Dsystem_socket=/run/... has to translate, and refusing would break
+# the default repo chain (see report).
 
 _REWRITE_ROOTS = ('/usr', '/etc', '/var', '/run')
 

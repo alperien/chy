@@ -129,7 +129,7 @@ def _provided_contrib(name, result, snap, dump_root):
             dep, kind = repodata.parse_dep(token)
             if kind == "virtual":
                 # Not resolvable; none occur in the
-                # corpus closure.  Warn and keep going.
+                # default repo closure.  Warn and keep going.
                 sys.stderr.write("chytrans: warning: %s: skipping virtual"
                                  " dependency %s in provided closure\n"
                                  % (name, token))
@@ -254,13 +254,13 @@ def cmd_translate(args):
         finally:
             shutil.rmtree(dump_root, ignore_errors=True)
 
-    # Corpus-level outputs: shlibs.map, provided.suggested, report,
+    # Repo-level outputs: shlibs.map, provided.suggested, report,
     # TRANSLATOR_VERSION.  Deterministic, everything sorted.
     map_lines, ambiguous = repodata.shlibs_map_with_ambiguities(
         snap.slice, snap.shlibs)
     _write_lines(os.path.join(outroot, "shlibs.map"), map_lines)
 
-    # Deferred names drop out like exceptions: a kept recipe is a corpus
+    # Deferred names drop out like exceptions: a kept recipe is a repo
     # member, not something the host must provide ("like a
     # handwritten exception").
     drop = set(translated) | set(exceptions) | set(deferred)
@@ -333,9 +333,9 @@ def cmd_overlay_check(args):
     for name in sorted(os.listdir(overlay_root)):
         if not os.path.isdir(os.path.join(overlay_root, name)):
             continue
-        # Upstream is where the corpus would fetch this package today:
+        # Upstream is where the default repo would fetch this package today:
         # under a pin the pin itself, else its current
-        # source-revisions commit; a name the snapshot does not know has
+        # source-revisions commit; a name the snapshot doesn't know has
         # no upstream and never alarms.
         src = repodata.source_commit(name, snap.slice)
         if src is None:

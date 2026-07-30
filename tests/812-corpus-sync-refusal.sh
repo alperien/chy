@@ -33,11 +33,11 @@ cp -R "$g/expected/recipes" "$TMPD/corpus/recipes"
 for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
     cp "$g/expected/$f" "$TMPD/corpus/$f"
 done
-printf 'chy corpus (generated)\n' >"$TMPD/corpus/README.md"
+printf 'chy default repo (generated)\n' >"$TMPD/corpus/README.md"
 chmod 755 "$TMPD/corpus"/recipes/*/build
 git -C "$TMPD/corpus" add -A
 git -C "$TMPD/corpus" -c user.name=seed -c user.email=seed@test \
-    commit -qm 'seed: golden corpus'
+    commit -qm 'seed: golden repo'
 git -C "$TMPD/corpus" push -q origin HEAD:main
 
 mkdir -p "$TMPD/bin"
@@ -73,9 +73,9 @@ file_has_line "$md" 'repodata slice: 18fbc0dcf949'
 file_has_line "$md" 'run: RUN_URL'
 file_matches "$md" '^reason-hash: [0-9a-f]\{64\}$'
 file_has "$md" 'Fix the translator, never the recipe'
-# all-or-nothing: the nineteen good translations must not reach the corpus
+# all-or-nothing: the nineteen good translations must not reach the repo
 [ -z "$(git -C "$TMPD/corpus" status --porcelain)" ] \
-    || fail 'a refusal dirtied the corpus checkout'
+    || fail 'a refusal dirtied the repo checkout'
 
 # --- apply: exactly one issue create, no push ---
 head0=$(git -C "$TMPD/corpus.git" rev-parse refs/heads/main)
@@ -99,6 +99,6 @@ assert_absent "$TMPD/dec2/commit.msg"
 file_has "$TMPD/dec2/issues/infra.md" 'not a snapshot'
 file_matches "$TMPD/dec2/issues/infra.md" '^reason-hash: [0-9a-f]\{64\}$'
 [ -z "$(git -C "$TMPD/corpus" status --porcelain)" ] \
-    || fail 'an infra failure dirtied the corpus checkout'
+    || fail 'an infra failure dirtied the repo checkout'
 
 exit 0

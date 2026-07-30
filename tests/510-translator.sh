@@ -13,7 +13,7 @@ command -v python3 >/dev/null 2>&1 || { echo "SKIP: python3 unavailable"; exit 0
 
 python3 translator/tests/run || exit 1
 
-# --- the corpus golden: live-snapshotted twenty ---
+# --- the default repo golden: live-snapshotted twenty ---
 g=translator/tests/golden
 if [ -d "$g/snapshot" ]; then
     tmp=$(mktemp -d) || exit 1
@@ -25,8 +25,8 @@ if [ -d "$g/snapshot" ]; then
             --out "$tmp" $(cat "$g/names") >/dev/null 2>&1; then
         echo "FAIL golden: translate exited nonzero"; exit 1
     fi
-    # content comparison, mode-agnostic: the corpus reaches git hosts
-    # with API-normalized modes while fresh emission sets exec bits
+    # compare content, not modes: files off git hosts carry
+    # API-normalized modes, fresh emission sets exec bits
     if python3 - "$g/expected" "$tmp" <<'PYCMP'
 import filecmp, os, sys
 a, b = sys.argv[1], sys.argv[2]
@@ -47,9 +47,9 @@ if bad:
     sys.exit(1)
 PYCMP
     then
-        echo "PASS golden: corpus twenty byte-exact"
+        echo "PASS golden: default repo twenty byte-exact"
     else
-        echo "FAIL golden: corpus differs from expected"
+        echo "FAIL golden: default repo differs from expected"
         exit 1
     fi
 fi

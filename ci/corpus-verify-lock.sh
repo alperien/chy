@@ -1,11 +1,11 @@
 #!/bin/sh
-# ci/corpus-verify-lock.sh - assert the corpus branch lock.
+# ci/corpus-verify-lock.sh - assert the default recipe repo's branch lock.
 #
-# Bot-only is enforced, not suggested: the corpus default branch must
+# Bot-only is enforced, not suggested: the repo's default branch must
 # carry active rules restricting updates, restricting deletions, and
 # blocking force pushes, with exactly the deploy key as bypass actor.
 # Every scheduled run verifies this through `$gh api` before touching
-# the corpus; a loosened lock is reported, never proceeded past.
+# the repo; a loosened lock is reported, never proceeded past.
 #
 #   corpus-verify-lock.sh --repo OWNER/REPO [--gh CMD] [--decisions DIR]
 #
@@ -89,7 +89,7 @@ sed "s/^/corpus-verify-lock: $branch: /" "$problems" >&2
 if [ -n "$decisions" ]; then
     mkdir -p "$decisions/issues"
     {
-        printf 'The corpus branch lock is loosened.\n\n'
+        printf 'The default recipe repo branch lock is loosened.\n\n'
         printf 'repo: %s\nbranch: %s\n\nproblems:\n\n' "$repo" "$branch"
         sed 's/^/- /' "$problems"
         printf '\nThe scheduled bot must be the only writer. Restore the branch\n'

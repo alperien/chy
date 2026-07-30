@@ -273,7 +273,7 @@ def universal(ctx, fails):
             mlines = f.read().decode("utf-8", "replace").splitlines()
         if any(ln.startswith("translator:") for ln in mlines):
             fails.append("universal: recipes/%s/meta carries a translator: line "
-                         "(version is corpus-level only)" % name)
+                         "(version is repo-level only)" % name)
         if "origin: translated" not in mlines:
             continue # handwritten exceptions aren't validated here
         for req in ("version", "sources", "checksums", "build"):

@@ -71,7 +71,7 @@ assert_eq "$(cat "$ERR")" \
 # --- map parsing: comments and blanks ignored, first two tokens used,
 #     extra tokens ignored, first matching line wins ---
 {
-    printf '# corpus artifact from the translator\n'
+    printf '# default repo artifact from the translator\n'
     printf '\n'
     printf 'libunrelated.so.99 otherpkg\n'
     printf '%s\tmappkg\textra tokens here are ignored\n' "$fake_a"

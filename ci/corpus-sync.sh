@@ -1,7 +1,7 @@
 #!/bin/sh
-# ci/corpus-sync.sh - decide what the scheduled corpus run does.
+# ci/corpus-sync.sh - decide what the scheduled sync of the default recipe repo does.
 #
-# The pure half of the seam: reads a snapshot, a corpus checkout, the
+# The pure half of the seam: reads a snapshot, a checkout of the default recipe repo, the
 # package set, and the translator; stages the checkout on a clean run and
 # writes its verdict under --decisions. Never commits, never pushes, never
 # talks to GitHub; ci/corpus-apply.sh acts on the verdict. Offline,
@@ -11,7 +11,7 @@
 #                  --decisions DIR --translator DIR
 #
 # Verdict files (exactly one of commit.msg / nochange, plus issues/):
-#   commit.msg              clean run with changes, staged in the corpus
+#   commit.msg              clean run with changes, staged in the repo checkout
 #                           index; subject provenance from the snapshot
 #                           MANIFEST, counts body from the report, and a
 #                           literal RUN_URL the workflow substitutes with
@@ -21,7 +21,7 @@
 #   issues/infra.md         translate died without writing a report
 #
 # All-or-nothing: any refusal means no commit (a partial commit would mix
-# snapshots across the corpus). Never --allow-empty; `git diff --cached
+# snapshots across the repo). Never --allow-empty; `git diff --cached
 # --quiet` is the commit decision. Exit 0 whenever a verdict was written;
 # nonzero only when this script itself cannot do its job.
 set -eu
@@ -70,12 +70,12 @@ while IFS= read -r line; do
 done <"$set_file"
 [ $# -gt 0 ] || die "no package names in $set_file"
 
-# seed the out-root with each existing corpus recipe whose package is still
+# seed the out-root with each existing repo recipe whose package is still
 # in the set, plus every handwritten exception (modes included). The
 # translator regenerates translated recipes wholesale and preserves the
 # handwritten and soak-deferred ones it is seeded, so a deferred package's
 # recipe survives instead of vanishing. A package dropped from the set is NOT
-# seeded, so it is pruned from the corpus on this sync rather than copied back.
+# seeded, so it is pruned from the repo on this sync rather than copied back.
 set_names=' '
 for sn in "$@"; do set_names="$set_names$sn "; done
 mkdir -p "$out/recipes"
@@ -166,7 +166,7 @@ if [ "$rc" -ne 0 ]; then
 fi
 
 # --- clean: sync the out-root into the checkout (recipes wholesale plus
-#     the four corpus-level files; README.md is not ours), stage it, and
+#     the four repo-level files; README.md is not ours), stage it, and
 #     let the staged diff decide ---
 
 rm -rf "$corpus/recipes"
@@ -192,7 +192,7 @@ case $dr in
         e=$(grep -c '^exception: ' "$report") || :
         r=$(grep -c '^refused: ' "$report") || :
         {
-            printf 'corpus: sync to void @ %s, repodata slice %s\n\n' \
+            printf 'sync to void @ %s, repodata slice %s\n\n' \
                 "$master12" "$slice12"
             printf 'translated %s, exceptions %s, refused %s\n\n' "$t" "$e" "$r"
             printf 'run: RUN_URL\n'

@@ -1,8 +1,8 @@
 #!/bin/sh
-# 810: the scheduled corpus machinery, unchanged day.
+# 810: the scheduled default-repo sync machinery, unchanged day.
 #
-# A bare local repo plays the corpus remote; its clone is seeded with the
-# committed golden expected corpus (with the modes a real bot push
+# A bare local repo plays the default repo's remote; its clone is seeded with the
+# committed golden expected recipes (with the modes a real bot push
 # carries: translate emits build scripts 0755). Translating the committed
 # golden snapshot over the golden set must then move nothing:
 # corpus-sync.sh records `unchanged` and no commit.msg, corpus-apply.sh
@@ -21,7 +21,7 @@ t_init
 umask 022   # the fixture is mode-sensitive
 g=translator/tests/golden
 
-# --- fake corpus remote: bare repo, clone, golden content, one commit ---
+# --- fake repo remote: bare repo, clone, golden content, one commit ---
 git init -q --bare "$TMPD/corpus.git"
 git -C "$TMPD/corpus.git" symbolic-ref HEAD refs/heads/main
 git clone -q "$TMPD/corpus.git" "$TMPD/corpus" 2>/dev/null
@@ -30,11 +30,11 @@ cp -R "$g/expected/recipes" "$TMPD/corpus/recipes"
 for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
     cp "$g/expected/$f" "$TMPD/corpus/$f"
 done
-printf 'chy corpus (generated)\n' >"$TMPD/corpus/README.md"
+printf 'chy default repo (generated)\n' >"$TMPD/corpus/README.md"
 chmod 755 "$TMPD/corpus"/recipes/*/build
 git -C "$TMPD/corpus" add -A
 git -C "$TMPD/corpus" -c user.name=seed -c user.email=seed@test \
-    commit -qm 'seed: golden corpus'
+    commit -qm 'seed: golden repo'
 git -C "$TMPD/corpus" push -q origin HEAD:main
 
 # --- PATH-shim gh: logs argv, serves canned issue-list JSON ---
@@ -53,7 +53,7 @@ chmod 755 "$TMPD/bin/gh"
 # --- sync: byte-identical translation, so the verdict is `unchanged` ---
 run sh ci/corpus-sync.sh --snapshot "$g/snapshot" --corpus "$TMPD/corpus" \
     --set "$g/names" --decisions "$TMPD/dec" --translator translator
-assert_rc 0 'sync on an unchanged corpus'
+assert_rc 0 'sync on an unchanged repo'
 assert_eq "$(cat "$TMPD/dec/nochange")" unchanged 'nochange verdict'
 assert_absent "$TMPD/dec/commit.msg"
 assert_absent "$TMPD/dec/issues"

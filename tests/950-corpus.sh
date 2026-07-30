@@ -1,13 +1,13 @@
 #!/bin/sh
-# The corpus acceptance, in one script.
+# The default-repo acceptance, in one script.
 #
-# Heavy: builds the full translated corpus closure from source
+# Heavy: builds the full translated default repo closure from source
 # by asking for one thing, firefox, whose depends pull gtk+3, which
 # pulls everything else. Then: the drift check (built ELF
 # NEEDED vs each recipe's expect-needed ledger), chy doctor, and the
 # the payoff: Mozilla's binary launching in a rootless prefix.
 #
-# Gated: run only when CHY_CORPUS=1 (the CI corpus job sets it); the
+# Gated: run only when CHY_CORPUS=1 (the CI acceptance job sets it); the
 # regular suite SKIPs it loudly. Expects the host packages listed in
 # tests/corpus-hostpkgs (the Void container installs them).
 set -u
@@ -26,7 +26,7 @@ export CHY_ROOT
 mkdir -p "$CHY_ROOT/db"
 cp -R "$repo/recipes" "$CHY_ROOT/recipes"
 cp "$repo/shlibs.map" "$CHY_ROOT/shlibs.map"
-# provided = everything the corpus closure needs that we do not build:
+# provided = everything the default repo closure needs that we do not build:
 # the first column of provided.suggested, plus firefox's manual extras.
 awk 'NF {print $1}' "$repo/provided.suggested" > "$CHY_ROOT/db/provided"
 printf 'alsa-lib\ngcc\n' >> "$CHY_ROOT/db/provided"
@@ -37,7 +37,7 @@ echo "== install firefox (binary kind) =="
 # container, via xbps) provides them. This is the provided model at
 # full scale, and it exercises exactly the new machinery: binary-kind
 # relocation, the launcher, runtime verification, doctor, and launch.
-# (The full FROM-SOURCE corpus build is deferred: it surfaced a real
+# (The full FROM-SOURCE default repo build is deferred: it surfaced a real
 # translator gap: per-patch strip levels.)
 awk 'NF {print $1}' "$repo/recipes/firefox/depends" > "$CHY_ROOT/db/provided"
 

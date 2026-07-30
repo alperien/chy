@@ -1103,7 +1103,7 @@ def case_35_soak_defer():
                     "fresh-1.9.tar.gz\n"),
         "checksums": fake_sha("fresh-1.9.tar.gz") + "\n",
         "build": ("#!/bin/sh -e\n"
-                  "# prior corpus recipe (1.9); a regenerating run would"
+                  "# prior repo recipe (1.9); a regenerating run would"
                   " replace these bytes\n"
                   './configure \\\n'
                   '    --prefix="$CHY_PREFIX" \\\n'

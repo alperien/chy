@@ -51,7 +51,7 @@ assert_not_requested "$CHY_ROOT" lib
 
 run_chy outdated
 assert_rc 0 'outdated after upgrade exits 0'
-assert_empty_file "$OUT" 'the root matches the corpus again'
+assert_empty_file "$OUT" 'the root matches the default repo again'
 run_chy doctor
 assert_rc 0 'doctor after upgrade'
 assert_eq "$(cat "$OUT")" 'doctor: clean' 'the root is clean'

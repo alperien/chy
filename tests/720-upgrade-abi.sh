@@ -101,7 +101,7 @@ assert_absent "$CHY_ROOT/usr/lib/libfake.so.1"
 
 run_chy outdated
 assert_rc 0
-assert_empty_file "$OUT" 'everything converged to the corpus'
+assert_empty_file "$OUT" 'everything converged to the default repo'
 run_chy doctor
 assert_rc 0 'doctor after the soname bump'
 assert_eq "$(cat "$OUT")" 'doctor: clean' 'the root stays coherent'

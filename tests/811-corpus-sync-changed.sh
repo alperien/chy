@@ -1,7 +1,7 @@
 #!/bin/sh
-# 811: the scheduled corpus machinery, changed day.
+# 811: the scheduled default-repo sync machinery, changed day.
 #
-# The corpus checkout holds a stale zlib version, so a clean translate
+# The repo checkout holds a stale zlib version, so a clean translate
 # produces exactly one staged change set: corpus-sync.sh writes the
 # pinned commit message (provenance from the golden MANIFEST, counts
 # from the report, RUN_URL placeholder), corpus-apply.sh commits as
@@ -29,12 +29,12 @@ cp -R "$g/expected/recipes" "$TMPD/corpus/recipes"
 for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
     cp "$g/expected/$f" "$TMPD/corpus/$f"
 done
-printf 'chy corpus (generated)\n' >"$TMPD/corpus/README.md"
+printf 'chy default repo (generated)\n' >"$TMPD/corpus/README.md"
 chmod 755 "$TMPD/corpus"/recipes/*/build
 printf '0.0 1\n' >"$TMPD/corpus/recipes/zlib/version"   # the staleness
 git -C "$TMPD/corpus" add -A
 git -C "$TMPD/corpus" -c user.name=seed -c user.email=seed@test \
-    commit -qm 'seed: golden corpus, stale zlib'
+    commit -qm 'seed: golden repo, stale zlib'
 git -C "$TMPD/corpus" push -q origin HEAD:main
 
 mkdir -p "$TMPD/bin"
@@ -52,15 +52,15 @@ chmod 755 "$TMPD/bin/gh"
 # --- sync: the staged diff demands a commit, message pinned ---
 run sh ci/corpus-sync.sh --snapshot "$g/snapshot" --corpus "$TMPD/corpus" \
     --set "$g/names" --decisions "$TMPD/dec" --translator translator
-assert_rc 0 'sync on a changed corpus'
+assert_rc 0 'sync on a changed repo'
 assert_absent "$TMPD/dec/nochange"
 [ -f "$TMPD/dec/commit.msg" ] || fail 'commit.msg missing on a changed day'
 # subject provenance: common/shlibs commit and repodata digest of the
 # committed golden MANIFEST, both truncated to 12 hex
 file_matches "$TMPD/dec/commit.msg" \
-    '^corpus: sync to void @ [0-9a-f]\{12\}, repodata slice [0-9a-f]\{12\}$'
+    '^sync to void @ [0-9a-f]\{12\}, repodata slice [0-9a-f]\{12\}$'
 assert_eq "$(head -n 1 "$TMPD/dec/commit.msg")" \
-    'corpus: sync to void @ 665530c3d320, repodata slice 18fbc0dcf949' \
+    'sync to void @ 665530c3d320, repodata slice 18fbc0dcf949' \
     'pinned commit subject'
 file_has_line "$TMPD/dec/commit.msg" 'translated 19, exceptions 1, refused 0'
 file_has_line "$TMPD/dec/commit.msg" 'run: RUN_URL'
@@ -76,7 +76,7 @@ assert_eq "$(git -C "$TMPD/corpus.git" log -1 --format='%an <%ae>' refs/heads/ma
     'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' \
     'commit identity'
 assert_eq "$(git -C "$TMPD/corpus.git" log -1 --format=%s refs/heads/main)" \
-    'corpus: sync to void @ 665530c3d320, repodata slice 18fbc0dcf949' \
+    'sync to void @ 665530c3d320, repodata slice 18fbc0dcf949' \
     'pushed commit subject'
 # gh: one listing for the auto-close scan, nothing mutating
 assert_eq "$(count_matches '^issue list ' "$TMPD/gh.log")" 1 'one issue listing'
