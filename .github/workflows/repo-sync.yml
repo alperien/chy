@@ -1,7 +1,8 @@
 # Scheduled sync of the default recipe repo. Daily: snapshot Void, translate
-# the default.set, and push the diff to the bot-only repo; a refusal
-# opens an issue here instead of committing. The logic lives in ci/*.sh so
-# it is testable offline (tests/810-814); this file only wires it up.
+# the default.set, build what the diff changed, and push to the bot-only
+# repo; a refusal or a failed build opens an issue here instead of
+# committing. The logic lives in ci/*.sh so
+# it is testable offline (tests/810-815); this file only wires it up.
 #
 # One-time setup by hand: on alperien/chy-recipes,
 # add a write deploy key, store its private key as the RECIPES_DEPLOY_KEY
@@ -30,7 +31,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: check out chy
         uses: actions/checkout@v4
@@ -62,6 +63,17 @@ jobs:
 
       - name: translate and decide (offline, deterministic)
         run: sh ci/repo-sync.sh --snapshot snap --repo repo --set default.set --decisions decisions --translator translator
+
+      - name: build gate (staged recipes, in the Void container)
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w ghcr.io/void-linux/void-glibc-full:latest sh -c '
+            xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 \
+              $(grep -v "^#" tests/acceptance-hostpkgs | tr "\n" " ") \
+              || { xbps-install -Syu xbps \
+                   && xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 \
+                        $(grep -v "^#" tests/acceptance-hostpkgs | tr "\n" " "); }
+            git config --global --add safe.directory "*"
+            sh ci/repo-build.sh --repo repo --decisions decisions'
 
       - name: show the decision
         if: always()

@@ -9,14 +9,14 @@
 #                   [--gh CMD]
 #
 # commit.msg present: commit the staged index as github-actions[bot],
-# push HEAD:main, then close any open `repo-sync: refused: <name>`
-# whose package the new report shows translated (auto-close; it rides
-# a push because a fixed package re-emits its recipe, which moves the
-# repo; the byte-identical corner waits for the next real commit).
-# issues/*.md present: open-or-update by exact title, the dedup key. An
-# unchanged reason-hash marker stays silent; a changed one posts one
-# comment and refreshes the body so the marker tracks the live reason.
-# Neither: nothing to do, zero gh calls.
+# push HEAD:main, then close any open `repo-sync: refused: <name>` or
+# `repo-sync: build failed: <name>` whose package the new report shows
+# translated (auto-close rides a push because a fixed package re-emits
+# its recipe, which moves the repo, the byte-identical corner waits for
+# the next real commit). issues/*.md present: open-or-update by exact
+# title, the dedup key. An unchanged reason-hash marker stays silent, a
+# changed one posts one comment and refreshes the body so the marker
+# tracks the live reason. Neither: nothing to do, zero gh calls.
 #
 # --gh names a single command (a stub in the dry-run tests, default gh).
 set -eu
@@ -101,6 +101,9 @@ for f in "$decisions/issues"/*.md; do
         refused-*.md)
             name=${base#refused-}; name=${name%.md}
             title="repo-sync: refused: $name" ;;
+        build-*.md)
+            name=${base#build-}; name=${name%.md}
+            title="repo-sync: build failed: $name" ;;
         infra.md) title='repo-sync: infrastructure failure' ;;
         lock.md) title='repo-sync: repo lock loosened' ;;
         *) die "unrecognized decision issue: $base" ;;
@@ -121,13 +124,19 @@ for f in "$decisions/issues"/*.md; do
     fi
 done
 
-# auto-close after a push: an open refusal whose package the freshly
-# committed report shows translated is fixed
+# auto-close after a push: an open refusal or build failure whose
+# package the freshly committed report shows translated is fixed (a
+# push only happens once the build gate passed, so translated in a
+# pushed report implies built)
 if [ "$pushed" -eq 1 ]; then
     [ -f "$repo/report" ] || die "no report in $repo after a push"
     while IFS=$tab read -r num _ title; do
-        case $title in 'repo-sync: refused: '*) ;; *) continue ;; esac
-        name=${title#repo-sync: refused: }
+        case $title in
+            'repo-sync: refused: '*) name=${title#repo-sync: refused: } ;;
+            'repo-sync: build failed: '*)
+                name=${title#repo-sync: build failed: } ;;
+            *) continue ;;
+        esac
         grep -Fqx "translated: $name" "$repo/report" || continue
         "$gh" issue close "$num" --repo "$issue_repo" \
             --comment "repo-sync: $name translated cleanly again; closing."
