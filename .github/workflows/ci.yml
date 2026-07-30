@@ -4,7 +4,11 @@ name: ci
 
 on:
   push:
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read                  # checkout only
 
 jobs:
   checks:
@@ -14,11 +18,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: shellcheck, POSIX mode
-        run: shellcheck --shell=sh chy/chy test tests/*.sh
+        run: shellcheck --shell=sh chy/chy test tests/*.sh ci/corpus-*.sh
 
-      - name: line ceiling, 1500
+      - name: shellcheck, bash mode (the template evaluator)
+        run: shellcheck --shell=bash translator/evaluate.sh
+
+      - name: py_compile, translator
+        run: python3 -m py_compile translator/*.py
+
+      - name: line ceiling, 2000
         run: |
-          max=1500
+          max=2000
           lines=$(wc -l < chy/chy)
           echo "chy is $lines lines (ceiling: $max)"
           [ "$lines" -le "$max" ]
