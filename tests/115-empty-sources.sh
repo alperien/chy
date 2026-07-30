@@ -1,7 +1,7 @@
 #!/bin/sh
-# A recipe whose sources and checksums have no significant lines is refused:
-# there is nothing to fetch, verify, or build. (the behaviour
-# was already correct but untested.)
+# A recipe whose sources and checksums have no significant lines is
+# refused: nothing to fetch, verify, or build. (behaviour was already
+# right, just untested.)
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

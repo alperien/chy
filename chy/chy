@@ -163,8 +163,8 @@ installed_names() { # entries under db/installed, byte-sorted
 
 # recipes
 # overlay/<name>/ shadows recipes/<name>/ as a whole directory, never per file.
-# An invalid overlay fails loudly; it never falls back to the corpus.
-recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the corpus dir
+# An invalid overlay fails loudly; it never falls back to the default repo.
+recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the default repo dir
     rd_d=$CHY_ROOT/overlay/$1
     [ -d "$rd_d" ] || rd_d=$CHY_ROOT/recipes/$1
     printf '%s\n' "$rd_d"
@@ -248,9 +248,9 @@ fetch_url() { # fetch_url <name> <url> <outfile>
     fi
 }
 
-# One source line. A verified cache hit is used as-is; otherwise try the line's
-# URLs in order (download, verify, on mismatch delete and move on), so a
-# corrupt primary falls back to the mirror.
+# One source line. A verified cache hit is reused as-is; otherwise try the
+# line's URLs in order (download, verify, on mismatch delete and move on),
+# so a corrupt primary falls back to the mirror.
 fetch_source() { # fetch_source <name> <sha256> <source line>
     fs_file=$(first_field "$3")
     fs_file=${fs_file##*/}
@@ -397,8 +397,8 @@ run_build() { # run_build <name>
 
 # normalize
 # The build staged a DESTDIR image of the real prefix at $DEST$CHY_ROOT.
-# Check it and normalize it, still in scratch, to a
-# $CHY_ROOT-relative tree at $NORM. The root is untouched on failure.
+# Check it and normalize it, still in scratch, to a $CHY_ROOT-relative
+# tree at $NORM. On failure the root is untouched.
 normalize() { # normalize <name>
     NORM=$CHY_ROOT/build/pkg
     n_bad=$CHY_ROOT/build/norm-failed
@@ -545,12 +545,12 @@ link_farm() { # link_farm <name>: record each created link, nonzero on failure
 }
 
 # Commit rollback helpers: an install links completely or not at all, so on
-# failure we undo the new links, drop the new store entry, and restore the old
-# alias and farm.
-# ln -sfn: -f and -n are not POSIX but every target userland has them and they
-# are the only correct replace here. The alias points at a directory, so
-# "ln -sf" would follow it into the old package and "rm then ln" would strand
-# it if the ln then failed; -n replaces without following, in one command.
+# failure the new links get undone, the new store entry dropped, and the old
+# alias and farm restored.
+# ln -sfn: -f and -n aren't POSIX, but every real userland has them and it's
+# the only right replace here. The alias points at a directory, so "ln -sf"
+# would follow it into the old package and "rm then ln" would strand it if
+# the ln then failed; -n replaces without following, in one command.
 point_alias() { # point_alias <name> <target>
     ln -sfn "$2" "$CHY_ROOT/store/$1"
 }
@@ -716,8 +716,8 @@ scan_needs() { # scan_needs <store entry dir>
             ldd "$sn_f" 2>&1 || :
     done | LC_ALL=C awk '
         $2 == "=>" && $3 == "not" && $4 == "found" { print $1 }
-        # a candidate that exists but is not a loadable ELF makes the
-        # loader abort instead of printing "=> not found"; recover the
+        # an annoying edge case: a candidate that exists but is not a loadable
+        # ELF makes the loader abort instead of printing "=> not found"; recover the
         # offending soname from that message so it is not silently lost.
         /: error while loading shared libraries: / {
             elp = $0

@@ -1,8 +1,7 @@
 #!/bin/sh
-# doctor must not call a damaged root clean. A db entry with an empty version
-# file, or with its manifest gone, is corrupt; doctor names it and exits 1
-# rather than skipping the entry and reporting clean over the damage it
-# exists to find.
+# doctor can't call a damaged root clean. A db entry with an empty
+# version file, or its manifest gone, is corrupt; doctor names it and
+# exits 1 instead of skipping the entry and reporting clean.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
