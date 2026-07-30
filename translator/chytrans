@@ -195,6 +195,7 @@ def cmd_translate(args):
     translated = []
     exceptions = []
     deferred = []
+    held = []
     hints = {}
 
     # soak entries age offline: the snapshot records only server-supplied
@@ -208,6 +209,11 @@ def cmd_translate(args):
     def refuse(name, reason):
         report.append("refused: %s: %s" % (name, reason))
         sys.stderr.write("chytrans: %s: refused: %s\n" % (name, reason))
+        # a refused name with a recipe already in the out-root (its
+        # seeded last translation) is held, not gone: it stays a repo
+        # member, exactly like a deferred one
+        if os.path.isdir(os.path.join(outroot, "recipes", name)):
+            held.append(name)
 
     for name in names:
         if _is_handwritten(outroot, name):
@@ -275,10 +281,10 @@ def cmd_translate(args):
         snap.slice, snap.shlibs)
     _write_lines(os.path.join(outroot, "shlibs.map"), map_lines)
 
-    # Deferred names drop out like exceptions: a kept recipe is a repo
-    # member, not something the host must provide ("like a
+    # Deferred and held names drop out like exceptions: a kept recipe
+    # is a repo member, not something the host must provide ("like a
     # handwritten exception").
-    drop = set(translated) | set(exceptions) | set(deferred)
+    drop = set(translated) | set(exceptions) | set(deferred) | set(held)
     provided = ["%s %s" % (src, ",".join(sorted(hints[src])))
                 for src in sorted(hints) if src not in drop]
     _write_lines(os.path.join(outroot, "provided.suggested"), provided)

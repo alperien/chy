@@ -57,6 +57,11 @@ md="$TMPD/dec/issues/refused-zlib.md"
 [ -f "$md" ] || fail 'issues/refused-zlib.md missing'
 hash=$(sed -n 's/^reason-hash: //p' "$md" | head -n 1)
 [ -n "$hash" ] || fail 'decision carries no reason-hash'
+# this test runs apply twice against one decision; drop the held-day
+# report commit (812's concern) so both runs exercise the issue
+# lifecycle alone
+rm -f "$TMPD/dec/commit.msg"
+git -C "$TMPD/repo" reset -q
 
 # --- already open, same reason-hash: dead silence ---
 printf '[{"number":7,"title":"repo-sync: refused: zlib","body":"reason-hash: %s"}]\n' \

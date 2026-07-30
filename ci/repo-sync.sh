@@ -11,19 +11,23 @@
 #                  --decisions DIR --translator DIR
 #
 # Verdict files (exactly one of commit.msg / nochange, plus issues/):
-#   commit.msg              clean run with changes, staged in the repo checkout
+#   commit.msg              run with changes, staged in the repo checkout
 #                           index; subject provenance from the snapshot
 #                           MANIFEST, counts body from the report, and a
 #                           literal RUN_URL the workflow substitutes with
 #                           the Actions run URL before apply
-#   nochange                no commit: contains unchanged, refused, or infra
+#   nochange                no commit: contains unchanged or infra
 # issues/refused-NAME.md one issue body per refusal
 #   issues/infra.md         translate died without writing a report
 #
-# All-or-nothing: any refusal means no commit (a partial commit would mix
-# snapshots across the repo). Never --allow-empty; `git diff --cached
-# --quiet` is the commit decision. Exit 0 whenever a verdict was written;
-# nonzero only when this script itself cannot do its job.
+# Holdback: a refused package keeps its last translated recipe (it was
+# seeded and never regenerated) or stays absent when it has none, an
+# issue gets filed either way, and the rest of the day still commits.
+# One template can't hold the whole set's freshness hostage, and the
+# recipe a user gets is always one the translator once vouched for.
+# Never --allow-empty, `git diff --cached --quiet` is the commit
+# decision. Exit 0 whenever a verdict was written, nonzero only when
+# this script itself can't do its job.
 set -eu
 
 say() { printf 'repo-sync: %s\n' "$1"; }
@@ -119,18 +123,28 @@ hash_of() { # STRING - the reason-hash dedup marker value
     printf '%s\n' "$1" | sha256sum | cut -d ' ' -f 1
 }
 
-# --- classification: rc 0 clean; rc!=0 with refused: lines in the
-#     report is a refusal; anything else (no report at all) is infra ---
+# --- classification: rc 0 clean, rc!=0 with refused: lines in the
+#     report is per-package holdback, anything else (no report at all)
+#     is infra. A refused package was seeded and never regenerated, so
+#     its last translated recipe rides the out-root unchanged (a
+#     refused name with no prior recipe stays absent), each refusal
+#     files an issue and the rest of the day proceeds ---
 
-if [ "$rc" -ne 0 ] && [ -f "$report" ] && grep -q '^refused: ' "$report"; then
+refused_n=0
+if [ -f "$report" ] && grep -q '^refused: ' "$report"; then
     mkdir -p "$decisions/issues"
-    n=0
     while IFS= read -r rline; do
         rest=${rline#refused: }
         name=${rest%%:*}
+        if [ -d "$out/recipes/$name" ]; then
+            state='held at its last translated recipe'
+        else
+            state='absent (no prior recipe to hold)'
+        fi
         {
             printf '%s\n\n' "$rline"
             printf 'package: %s\n' "$name"
+            printf 'state: %s\n' "$state"
             printf 'template commit: %s\n' "$(tpl_commit "$name")"
             printf 'void master: %s\n' "${master12:-unknown}"
             printf 'repodata slice: %s\n' "${slice12:-unknown}"
@@ -139,16 +153,14 @@ if [ "$rc" -ne 0 ] && [ -f "$report" ] && grep -q '^refused: ' "$report"; then
             printf 'regenerated wholesale and hand-edits rot.\n\n'
             printf 'reason-hash: %s\n' "$(hash_of "$rline")"
         } >"$decisions/issues/refused-$name.md"
-        n=$((n + 1))
+        refused_n=$((refused_n + 1))
     done <<EOF
 $(grep '^refused: ' "$report")
 EOF
-    printf 'refused\n' >"$decisions/nochange"
-    say "refused $n package(s), no commit (all-or-nothing)"
-    exit 0
+    say "refused $refused_n package(s): held, the day proceeds"
 fi
 
-if [ "$rc" -ne 0 ]; then
+if [ "$rc" -ne 0 ] && [ "$refused_n" -eq 0 ]; then
     mkdir -p "$decisions/issues"
     last=$(tail -n 1 "$work/translate.log" 2>/dev/null || true)
     {
