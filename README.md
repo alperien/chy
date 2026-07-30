@@ -22,7 +22,7 @@ points at: the symlink above picks the default repo, but making your
 own is encouraged. For quick tweaks there's also
 $CHY_ROOT/overlay/<name>, which chy reads before the repo.
 
-The default repo is converted from Void Linux's xbps by the chytrans tool. All fixes go in the
-translator, and PRs that edit recipes/ get closed.
+The chy-recipes repo is converted from Void Linux's xbps by the chytrans tool. All fixes go in the
+translator, PRs that edit recipes/ get closed.
 
 MIT.
