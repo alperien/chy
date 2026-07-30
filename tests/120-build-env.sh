@@ -1,8 +1,9 @@
 #!/bin/sh
-# the build runs as `sh build <destdir> <version>` with cwd = the
-# prepared build directory, $1 an absolute staging dir, $2 the version, and
-# the documented environment exported (CHY_ROOT, CHY_PREFIX, PATH, CPPFLAGS,
-# LDFLAGS, PKG_CONFIG_PATH, appended/prepended to any existing values).
+# the build runs as `sh build <destdir> <version>`: cwd is the prepared
+# build dir, $1 an absolute staging dir, $2 the version, and the
+# documented env exported (CHY_ROOT, CHY_PREFIX, PATH, CPPFLAGS,
+# LDFLAGS, PKG_CONFIG_PATH, XDG_DATA_DIRS, appended/prepended to
+# what's already set).
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -24,6 +25,7 @@ set -eu
     printf 'cpp=%s\n' "\$CPPFLAGS"
     printf 'ld=%s\n' "\$LDFLAGS"
     printf 'pc=%s\n' "\$PKG_CONFIG_PATH"
+    printf 'xdg=%s\n' "\$XDG_DATA_DIRS"
     printf 'dest=%s\n' "\$1"
     printf 'ver=%s\n' "\$2"
     if [ -f seed-envpkg.txt ]; then
@@ -86,6 +88,16 @@ esac
 case $pc in
     *"/chypreset/pc"*) ;;
     *) fail "PKG_CONFIG_PATH must keep the preset value: [$pc]" ;;
+esac
+
+xdg=$(val xdg)
+case $xdg in
+    "$CHY_ROOT/usr/share:"*) ;;
+    *) fail "XDG_DATA_DIRS must start with the farm share dir: [$xdg]" ;;
+esac
+case $xdg in
+    *"/usr/share"*) ;;
+    *) fail "XDG_DATA_DIRS must keep the system default: [$xdg]" ;;
 esac
 
 dest=$(val dest)

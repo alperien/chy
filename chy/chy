@@ -401,7 +401,12 @@ run_build() { # run_build <name>
         CPPFLAGS="${CPPFLAGS:+$CPPFLAGS }-I$CHY_PREFIX/include"
         LDFLAGS="${LDFLAGS:+$LDFLAGS }-L$CHY_PREFIX/lib -Wl,-rpath,$CHY_PREFIX/lib"
         PKG_CONFIG_PATH="$CHY_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-        export CHY_ROOT CHY_PREFIX PATH CPPFLAGS LDFLAGS PKG_CONFIG_PATH
+        # the farm's share dir first, then the caller's dirs or the
+        # spec default: tools that read XDG data (g-ir-scanner's .gir
+        # lookup, vala, schemas) have to see installed packages
+        XDG_DATA_DIRS="$CHY_PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+        export CHY_ROOT CHY_PREFIX PATH CPPFLAGS LDFLAGS PKG_CONFIG_PATH \
+            XDG_DATA_DIRS
         exec sh "$R_DIR/build" "$DEST" "$R_VER"
     ) || fail "$1" "build failed"
 }
