@@ -1,11 +1,11 @@
-# Scheduled corpus sync. Daily: snapshot Void, translate
-# the default.set, and push the diff to the bot-only corpus repo; a refusal
+# Scheduled sync of the default recipe repo. Daily: snapshot Void, translate
+# the default.set, and push the diff to the bot-only repo; a refusal
 # opens an issue here instead of committing. The logic lives in ci/*.sh so
 # it is testable offline (tests/810-814); this file only wires it up.
 #
 # One-time setup by hand: create alperien/chy-corpus,
 # add a write deploy key there, store its private key as the CORPUS_DEPLOY_KEY
-# secret here, and lock the corpus default branch to that key.
+# secret here, and lock its default branch to that key.
 name: corpus-sync
 
 on:
@@ -19,7 +19,7 @@ on:
         default: false
 
 permissions:
-  contents: read                  # main-repo checkout only; corpus uses the deploy key
+  contents: read                  # main-repo checkout only; the recipe repo uses the deploy key
   issues: write                   # failure issues
   actions: write                  # keepalive (re-enable the schedule)
 
@@ -35,14 +35,14 @@ jobs:
       - name: check out chy
         uses: actions/checkout@v4
 
-      - name: check out the corpus repo (deploy key)
+      - name: check out the recipe repo (deploy key)
         uses: actions/checkout@v4
         with:
           repository: alperien/chy-corpus
           ssh-key: ${{ secrets.CORPUS_DEPLOY_KEY }}
           path: corpus
 
-      - name: verify the corpus lock
+      - name: verify the repo lock
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -51,7 +51,7 @@ jobs:
             RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             find decisions -type f -exec sed -i "s#RUN_URL#$RUN_URL#g" {} +
             sh ci/corpus-apply.sh --decisions decisions --corpus corpus --issue-repo ${{ github.repository }}
-            echo "corpus lock is loosened; filed an issue and stopped." >&2
+            echo "repo lock is loosened; filed an issue and stopped." >&2
             exit 1
           fi
 

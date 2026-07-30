@@ -48,7 +48,7 @@ jobs:
         run: sh ./test
 
   corpus:
-    name: corpus acceptance (gtk+3 -> firefox)
+    name: default repo acceptance (gtk+3 -> firefox)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -63,5 +63,5 @@ jobs:
       - name: install the host stand-ins (tests/corpus-hostpkgs)
         run: xbps-install -Syu $(grep -v '^#' tests/corpus-hostpkgs | tr '\n' ' ')
 
-      - name: corpus acceptance
+      - name: default repo acceptance
         run: CHY_CORPUS=1 sh tests/950-corpus.sh
