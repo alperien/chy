@@ -69,7 +69,8 @@ assert_installed "$broot1" toyok 1.1 1
 
 # --- a failing build: verdict rewritten, the rest still attempted ---
 mkpkg "$seedroot" toybad '1.0 1'
-printf 'set -eu\nexit 7\n' >"$seedroot/recipes/toybad/build"
+printf 'set -eu\necho doomed-build-marker >&2\nexit 7\n' \
+    >"$seedroot/recipes/toybad/build"
 mv "$seedroot/recipes/toybad" "$repo/recipes/toybad"
 mkpkg "$seedroot" toyok '1.2 1' usr/toyok.txt
 rm -rf "$repo/recipes/toyok"
@@ -85,6 +86,7 @@ run sh ci/repo-build.sh --repo "$repo" --decisions "$TMPD/dec2" \
     --root "$broot2"
 assert_rc 0 'gate on a failing day still decides'
 file_has "$OUT" 'build FAILED: toybad'
+file_has "$OUT" 'doomed-build-marker'
 file_has "$OUT" 'built: toyok'
 file_has "$OUT" 'no commit (all-or-nothing)'
 assert_absent "$TMPD/dec2/commit.msg"

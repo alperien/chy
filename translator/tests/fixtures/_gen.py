@@ -144,6 +144,10 @@ class Case:
         self.snap("srcpkgs/%s/files/%s" % (pkg, rel), text,
                   raw_url(pkg, "files/" + rel))
 
+    def patch(self, pkg, fname, text):
+        self.snap("srcpkgs/%s/patches/%s" % (pkg, fname), text,
+                  raw_url(pkg, "patches/" + fname))
+
     def shlibs(self, text):
         self._have_shlibs = True
         self.snap("common-shlibs", text, SHLIBS_URL)
@@ -1195,6 +1199,81 @@ def case_38_virtual_default_awk():
         "exit :: 0\n"
         "file-line :: report :: translated: wapp\n"
         "file-line :: recipes/wapp/depends :: gawk\n"
+    )
+    c.finish()
+
+
+# patch strip-level cases
+
+AB_PATCH = (
+    "--- a/src/thing.c\t2020-01-01 00:00:00.000000000 +0000\n"
+    "+++ b/src/thing.c\t2020-01-02 00:00:00.000000000 +0000\n"
+    "@@ -1 +1 @@\n"
+    "-old\n"
+    "+new\n"
+)
+
+BARE_PATCH = (
+    "--- src/thing.h\t2017-11-09 16:51:11.000000000 +0100\n"
+    "+++ src/thing.h\t2017-11-09 16:51:12.000000000 +0100\n"
+    "@@ -1 +1 @@\n"
+    "-old\n"
+    "+new\n"
+)
+
+
+def case_39_patchlevel_derived():
+    # without patch_args the strip level is derived per patch from the
+    # ---/+++ headers: a/ b/ prefixes are the normalized -p1 shape,
+    # bare paths are the old xbps -p0 default (the libffi shape).
+    # Only the non-default level lands in patchlevel.
+    c = Case("39-patchlevel-derived")
+    c.names("plev")
+    c.template("plev", tmpl("plev"))
+    c.patch("plev", "05-bare.patch", BARE_PATCH)
+    c.patch("plev", "07-ab.patch", AB_PATCH)
+    c.slice(E("plev"))
+    c.expect("recipes/plev/patchlevel", "0 05-bare.patch\n")
+    c.expect("recipes/plev/patches/05-bare.patch", BARE_PATCH)
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: report :: translated: plev\n"
+        "file-line :: recipes/plev/patchlevel :: 0 05-bare.patch\n"
+    )
+    c.finish()
+
+
+def case_40_patchlevel_args():
+    # a bare-strip patch_args pins the level for every patch in the
+    # template, overriding derivation.
+    c = Case("40-patchlevel-args")
+    c.names("pargs")
+    c.template("pargs", tmpl("pargs", lines=["patch_args=-Np0"]))
+    c.patch("pargs", "10-ab.patch", AB_PATCH)
+    c.slice(E("pargs"))
+    c.expect("recipes/pargs/patchlevel", "0 10-ab.patch\n")
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: report :: translated: pargs\n"
+        "file-line :: recipes/pargs/patchlevel :: 0 10-ab.patch\n"
+    )
+    c.finish()
+
+
+def case_41_refuse_patch_args():
+    # patch_args beyond a bare strip level (--directory and friends)
+    # has no chy mapping and refuses.
+    c = Case("41-refuse-patch-args")
+    c.names("pfancy")
+    c.template("pfancy", tmpl("pfancy",
+                              lines=['patch_args="-Np1 -d sub"']))
+    c.patch("pfancy", "20-ab.patch", AB_PATCH)
+    c.slice(E("pfancy"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: pfancy :: patch_args\n"
+        "file-matches :: report :: ^refused: pfancy:.*patch_args\n"
+        "absent :: recipes/pfancy\n"
     )
     c.finish()
 

@@ -18,7 +18,8 @@ the list of all options.
     sh chy/chy install freetype
 
 A recipe is a folder containing text files: version, sources, checksums,
-depends, makedepends, a build script, and patches/. A recipe repo is a
+depends, makedepends, a build script, patches/, and an optional
+patchlevel for patches that do not apply at -p1. A recipe repo is a
 directory of recipes, chy builds from whichever one $CHY_ROOT/recipes
 points at: the symlink above picks the default repo, but making your
 own is encouraged. For quick tweaks there's also

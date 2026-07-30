@@ -54,7 +54,7 @@ _DUMP_KEYS = (
     'distfiles', 'checksum', 'hostmakedepends', 'makedepends', 'depends',
     'conflicts', 'configure_args', 'make_build_args', 'make_install_args',
     'make_build_target', 'make_install_target', 'conf_files',
-    'system_accounts', 'env_vars',
+    'system_accounts', 'patch_args', 'env_vars',
 )
 
 
@@ -969,6 +969,83 @@ def _sources_and_checksums(name, version, dump, assets, srcdir, commit):
     return src_lines, sum_lines
 
 
+# A bare strip flag is the only patch_args with a chy mapping: -N and
+# -t are patch(1) noise flags Void templates carry, the level is the
+# substance.
+_PATCH_ARGS_RE = re.compile(r'^-[Nt]*p([0-9]+)$')
+
+
+def _patch_level(fname, data):
+    """One patch's strip level, derived from its ---/+++ header pairs.
+
+    An a/ or b/ marker on either side is the normalized -p1 convention
+    (hand-edited patches sometimes carry a/ on both sides); bare paths
+    on both sides are the old xbps -p0 default.  The eras can't mix
+    inside a tree Void actually built (a template whose patches
+    disagreed with its era's default would never have built), so the
+    derivation works exactly where patch_args is silent.  /dev/null
+    sides (file adds and deletes) defer to the other side; a marker
+    against a bare path on the other side, hunks that disagree, and a
+    patch with no header pairs at all refuse rather than guess.  Only
+    adjacent ---/+++ lines pair, so a deleted body line starting with
+    -- can't fake a header."""
+    def side(path):
+        if path == b'/dev/null':
+            return None
+        return 1 if path.startswith((b'a/', b'b/')) else 0
+
+    levels = set()
+    prev = None
+    for raw in data.splitlines():
+        if raw.startswith(b'+++ ') and prev is not None:
+            fields_old = prev[4:].split()
+            fields_new = raw[4:].split()
+            if fields_old and fields_new:
+                old = side(fields_old[0])
+                new = side(fields_new[0])
+                if old is not None and new is not None and old != new:
+                    raise Refuse('patches/%s: header sides disagree on '
+                                 'the strip level' % fname)
+                verdict = old if old is not None else new
+                if verdict is not None:
+                    levels.add(verdict)
+        prev = raw if raw.startswith(b'--- ') else None
+    if not levels:
+        raise Refuse('patches/%s: no ---/+++ header pair to derive a '
+                     'strip level from' % fname)
+    if len(levels) != 1:
+        raise Refuse('patches/%s: strip level differs between hunks'
+                     % fname)
+    return levels.pop()
+
+
+def _patch_levels(patches, patch_args):
+    """patchlevel lines ("<n> <patchname>", patch byte order) for every
+    patch that doesn't apply at chy's default -p1.  A template's
+    patch_args pins the level for all its patches when it's a bare
+    strip flag; anything fancier (--directory, --binary) has no chy
+    mapping and refuses.  Without patch_args the level is derived per
+    patch (see _patch_level)."""
+    if not patches:
+        return []
+    override = None
+    args = patch_args.strip()
+    if args:
+        m = _PATCH_ARGS_RE.match(args)
+        if m is None:
+            raise Refuse('patch_args %r: only a bare strip level '
+                         '(-Np<n>) has a chy mapping' % args)
+        override = int(m.group(1))
+    lines = []
+    for path in sorted(patches):
+        base = path.split('/', 1)[1]
+        level = override if override is not None \
+            else _patch_level(base, patches[path])
+        if level != 1:
+            lines.append('%d %s' % (level, base))
+    return lines
+
+
 def _collect_patches(srcdir, name):
     """patches/ verbatim from the fetched tree.  chy applies *.patch and
     *.diff only; any other file there would be silently inert,
@@ -1194,6 +1271,7 @@ def _translate_into(result, name, snap, dumpdir):
     src_lines, sum_lines = _sources_and_checksums(
         name, version, dump, ctx.assets, srcdir, commit)
     patches = _collect_patches(srcdir, name)
+    plevel = _patch_levels(patches, dump['patch_args'])
 
     # assemble the recipe
     files = {
@@ -1202,6 +1280,8 @@ def _translate_into(result, name, snap, dumpdir):
         'checksums': ('\n'.join(sum_lines) + '\n').encode(),
         'build': build_script.encode(),
     }
+    if plevel:
+        files['patchlevel'] = ('\n'.join(plevel) + '\n').encode()
     if depends:
         files['depends'] = ('\n'.join(depends) + '\n').encode()
     if makedepends:

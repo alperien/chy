@@ -372,8 +372,19 @@ prepare_build() { # prepare_build <name>
     while IFS= read -r pb_p; do
         require "$1" patch
         step "$1" "apply $pb_p"
-        # TODO: -p1 is hardcoded; a few void patches want -p0 (libffi)
-        (cd "$WORK" && patch -p1 <"$R_DIR/patches/$pb_p") ||
+        # strip level 1 unless the recipe's optional patchlevel file
+        # says otherwise ("<n> <patchname>" per line; the translator
+        # derives the entries, a handwritten recipe may carry them too)
+        pb_lvl=1
+        if [ -f "$R_DIR/patchlevel" ]; then
+            pb_lvl=$(awk -v p="$pb_p" \
+                'BEGIN { l = 1 } $2 == p { l = $1; exit } END { print l }' \
+                "$R_DIR/patchlevel")
+            case $pb_lvl in
+                ''|*[!0-9]*) fail "$1" "bad patchlevel entry for $pb_p" ;;
+            esac
+        fi
+        (cd "$WORK" && patch -p"$pb_lvl" <"$R_DIR/patches/$pb_p") ||
             fail "$1" "patch failed to apply: $pb_p"
     done <"$CHY_ROOT/build/patchlist"
 }

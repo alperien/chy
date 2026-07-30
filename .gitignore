@@ -2,3 +2,4 @@
 translator/__pycache__/
 translator/tests/__pycache__/
 /chy-recipes/
+translator/tests/fixtures/__pycache__/

@@ -1,0 +1,12 @@
+# Template file for 'pargs'
+pkgname=pargs
+version=1.0
+revision=1
+build_style=gnu-configure
+patch_args=-Np0
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/pargs"
+distfiles="https://example.org/dist/pargs-${version}.tar.gz"
+checksum=ec713a7f16cd06ac61c76f17006f525845cc198f37ff9b21a1d70a7d8a82dbc5

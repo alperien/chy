@@ -25,7 +25,7 @@
 #   <dump-out-dir>   parent directory; on success <dump-out-dir>/<pkgname>/
 #                    is (re)created with:
 #                      vars        one "key<TAB>value" per line, value escapes
-# \t \n \\; all 19 keys always present
+# \t \n \\; all 20 keys always present
 #                      options     resolved build options, "name=0|1" per line
 #                      functions/ one file per defined do_*/pre_*/post_*/
 #                                  *_package function, body verbatim
@@ -291,13 +291,13 @@ done
     _pkgdump="$STAGE/$pkgname"
     "$MKDIR" -p "$_pkgdump/functions" || exit 91
 
-    # vars: the 19 pinned keys, always present, order
+    # vars: the 20 pinned keys, always present, fixed order
     {
         for _key in pkgname version revision build_style build_helper \
             distfiles checksum hostmakedepends makedepends depends \
             conflicts configure_args make_build_args make_install_args \
             make_build_target make_install_target conf_files \
-            system_accounts; do
+            system_accounts patch_args; do
             _esc "${!_key-}"
             printf '%s\t%s\n' "$_key" "$_esc_out"
         done

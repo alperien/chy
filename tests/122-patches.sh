@@ -83,4 +83,47 @@ assert_eq "$(snap "$CHY_ROOT")" "$snap0" 'failed patch leaves the root as it was
 assert_not_installed "$CHY_ROOT" pfail
 assert_no_store "$CHY_ROOT" pfail 1.0
 
+# --- a bare-header patch applies at the level the optional patchlevel
+#     file names; unlisted patches stay at -p1 ---
+mkdir -p "$TMPD/t-plevel/plevel-1.0"
+printf 'alpha\n' >"$TMPD/t-plevel/plevel-1.0/base.txt"
+mktgz "$TMPD/plevel-src.tar.gz" "$TMPD/t-plevel" plevel-1.0
+
+r0="$CHY_ROOT/recipes/plevel"
+mkdir -p "$r0/patches"
+printf '1.0\n' >"$r0/version"
+add_source "$CHY_ROOT" plevel "$TMPD/plevel-src.tar.gz"
+cat >"$r0/patches/00-zero.patch" <<'EOF'
+--- base.txt
++++ base.txt
+@@ -1 +1 @@
+-alpha
++beta
+EOF
+cat >"$r0/patches/10-one.patch" <<'EOF'
+--- a/base.txt
++++ b/base.txt
+@@ -1 +1 @@
+-beta
++gamma
+EOF
+printf '0 00-zero.patch\n' >"$r0/patchlevel"
+cat >"$r0/build" <<'EOF'
+set -eu
+mkdir -p "$1$CHY_ROOT/usr/share/plevel"
+cp base.txt "$1$CHY_ROOT/usr/share/plevel/base.txt"
+EOF
+
+run_chy install plevel
+assert_rc 0 'mixed strip levels via the patchlevel file'
+assert_eq "$(cat "$CHY_ROOT/usr/share/plevel/base.txt")" 'gamma' \
+    'both levels applied in order'
+
+# a malformed patchlevel entry fails loudly, before patch runs
+run_chy remove plevel
+printf 'x 00-zero.patch\n' >"$r0/patchlevel"
+run_chy install plevel
+assert_rc 1 'a malformed patchlevel entry aborts'
+file_has "$ERR" 'bad patchlevel entry'
+
 exit 0

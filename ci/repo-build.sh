@@ -94,6 +94,9 @@ while IFS= read -r name; do
     fi
     failed="$failed$name "
     say "build FAILED: $name"
+    # the tail goes to the step log too: on a dry run the issue file
+    # below is never filed, and a rejection nobody can read is noise
+    tail -n 15 "$log" 2>/dev/null | sed 's/^/repo-build:   /'
     last=$(tail -n 1 "$log" 2>/dev/null) || last=''
     mkdir -p "$decisions/issues"
     {

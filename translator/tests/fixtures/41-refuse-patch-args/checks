@@ -1,0 +1,4 @@
+exit :: 1
+stderr-refusal :: pfancy :: patch_args
+file-matches :: report :: ^refused: pfancy:.*patch_args
+absent :: recipes/pfancy

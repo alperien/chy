@@ -1,0 +1,12 @@
+# Template file for 'pfancy'
+pkgname=pfancy
+version=1.0
+revision=1
+build_style=gnu-configure
+patch_args="-Np1 -d sub"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/pfancy"
+distfiles="https://example.org/dist/pfancy-${version}.tar.gz"
+checksum=9087df31f4a0db59db8fcfe0ded0d448e49bc3a275ec44a2a0691de16f814868
