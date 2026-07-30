@@ -40,8 +40,12 @@ if [ -z "$decisions" ] || [ -z "$repo" ] || [ -z "$issue_repo" ]; then
     die 'usage: --decisions DIR --repo DIR --issue-repo OWNER/REPO [--gh CMD]'
 fi
 [ -d "$decisions" ] || die "no decisions directory: $decisions"
+# git -C "$repo" resolves relative file arguments (commit -F) inside
+# the checkout, so pin both directories to absolute paths up front
+decisions=$(cd "$decisions" && pwd) || die "cannot resolve $decisions"
 git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
     || die "not a git checkout: $repo"
+repo=$(cd "$repo" && pwd) || die "cannot resolve $repo"
 
 bot_name='github-actions[bot]'
 bot_mail='41898282+github-actions[bot]@users.noreply.github.com'

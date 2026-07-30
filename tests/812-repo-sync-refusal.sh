@@ -88,10 +88,14 @@ grep -q '^zlib' "$TMPD/repo/provided.suggested" \
     && fail 'a held package leaked into provided.suggested'
 file_has "$TMPD/repo/report" 'refused: zlib'
 
-# --- apply: the report commit pushes, one issue create ---
+# --- apply: the report commit pushes, one issue create. Invoked with
+#     RELATIVE paths, the workflow's shape: git -C would resolve a
+#     relative commit -F inside the checkout (the first live push
+#     failed exactly there), so apply must pin its paths absolute ---
 head0=$(git -C "$TMPD/repo.git" rev-parse refs/heads/main)
-run sh ci/repo-apply.sh --decisions "$TMPD/dec" --repo "$TMPD/repo" \
-    --issue-repo alperien/chy --gh "$TMPD/bin/gh"
+apply_abs=$PWD/ci/repo-apply.sh
+run sh -c 'cd "$1" && sh "$2" --decisions dec --repo repo \
+    --issue-repo alperien/chy --gh "$1/bin/gh"' apply "$TMPD" "$apply_abs"
 assert_rc 0 'apply on a held day'
 [ "$(git -C "$TMPD/repo.git" rev-parse refs/heads/main)" != "$head0" ] \
     || fail 'the held-day report commit did not push'
