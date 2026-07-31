@@ -1,6 +1,7 @@
 # The package set the scheduled sync translates.
 # One name per line; blank lines and # lines are ignored.
-# The curated 20: the Firefox runtime spine over an X11-provided
+#
+# The curated core: the Firefox runtime spine over an X11-provided
 # host. firefox itself is a handwritten binary exception, seeded not
 # translated, so it is not listed here; bzip2 stays listed and is preserved
 # as its own handwritten exception.

@@ -1,7 +1,8 @@
 # Scheduled sync of the default recipe repo. Daily: snapshot Void, translate
 # the default.set, build what the diff changed, and push to the bot-only
-# repo; a refusal or a failed build opens an issue here instead of
-# committing. The logic lives in ci/*.sh so
+# repo. A failed build blocks the push and opens an issue here; a
+# refusal holds just that package, files an issue, and the rest of
+# the day still commits. The logic lives in ci/*.sh so
 # it is testable offline (tests/810-815); this file only wires it up.
 #
 # One-time setup by hand: on alperien/chy-recipes,
@@ -56,7 +57,7 @@ jobs:
             exit 1
           fi
 
-      - name: snapshot Void (the only networked step)
+      - name: snapshot Void (pins the day's inputs)
         env:
           GITHUB_TOKEN: ${{ github.token }}   # authed API, for the rate limit (never reaches template evaluation)
         run: python3 translator/chytrans snapshot --out snap $(grep -v '^#' default.set)
