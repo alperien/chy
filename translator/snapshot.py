@@ -294,6 +294,82 @@ def _load_index(repodata_bytes, tmp):
 # committer date); memoized per run so neither asks twice.
 _COMMIT_CACHE = {}
 
+# GraphQL batches the same two answers a hundred refs at a time, so a
+# large set costs a handful of requests instead of one per package
+# (the workflow token gets 1,000 REST calls an hour; repeated syncs
+# of a grown set exhausted it).  Prefetch seeds the cache; anything
+# it can't answer falls back to the per-ref REST lookup below, and
+# without a token the prefetch does nothing.
+_GRAPHQL_URL = "https://api.github.com/graphql"
+
+
+def _graphql(query):
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise SnapshotError("graphql needs GITHUB_TOKEN")
+    # the token rides curl's stdin config (never argv); the payload
+    # isn't a secret and rides a private temp file, stdin can't serve
+    # both
+    payload = tempfile.NamedTemporaryFile(prefix="chytrans-gql.",
+                                          suffix=".json", delete=False)
+    try:
+        payload.write(json.dumps({"query": query}).encode())
+        payload.close()
+        config = ('header = "Authorization: Bearer %s"\n'
+                  'header = "Content-Type: application/json"\n' % token)
+        proc = _run(["curl", "-sSfL", "--max-time", "300", "-X", "POST",
+                     "--data", "@" + payload.name, "--config", "-",
+                     _GRAPHQL_URL], input=config.encode())
+        if proc.returncode != 0:
+            raise SnapshotError("graphql fetch failed: %s"
+                                % proc.stderr.decode().strip())
+        return json.loads(proc.stdout.decode())
+    finally:
+        os.unlink(payload.name)
+
+
+def _prefetch_commit_info(refs):
+    """Batch-resolve commit refs into _COMMIT_CACHE via GraphQL, 100
+    per query.  Best effort: on any failure the refs stay unseeded
+    and _commit_info answers them one by one over REST, exactly the
+    old behavior.  Runs only when GITHUB_TOKEN is set (GraphQL has no
+    anonymous tier)."""
+    if not os.environ.get("GITHUB_TOKEN"):
+        return
+    todo = sorted({r for r in refs if r and r not in _COMMIT_CACHE})
+    for start in range(0, len(todo), 100):
+        batch = todo[start:start + 100]
+        fields = "\n".join(
+            'c%d: object(expression: "%s") { ... on Commit '
+            '{ oid committedDate } }' % (i, ref)
+            for i, ref in enumerate(batch))
+        query = ('query { repository(owner: "void-linux", '
+                 'name: "void-packages") { %s } }' % fields)
+        try:
+            data = _graphql(query)
+            repo = data["data"]["repository"]
+        except (SnapshotError, KeyError, TypeError, ValueError) as err:
+            sys.stderr.write("chytrans: WARNING: commit prefetch failed"
+                             " (%s); falling back to per-ref lookups\n"
+                             % err)
+            return
+        for i, ref in enumerate(batch):
+            node = repo.get("c%d" % i)
+            if not isinstance(node, dict):
+                continue
+            full = node.get("oid", "")
+            date = node.get("committedDate", "")
+            epoch = 0
+            if isinstance(date, str) and date:
+                try:
+                    parsed = datetime.datetime.fromisoformat(
+                        date.replace("Z", "+00:00"))
+                    epoch = int(parsed.timestamp())
+                except ValueError:
+                    epoch = 0
+            if isinstance(full, str) and full:
+                _COMMIT_CACHE[ref] = (full, epoch)
+
 
 def _commit_info(ref):
     """Commits-API lookup -> (full 40-hex sha or "", committer-date
@@ -529,6 +605,11 @@ def _create(names, outdir, tmp):
                             " package" % (name, src))
     if problems:
         raise SnapshotError("; ".join(problems))
+
+    # batch the commit lookups every later step leans on: tree pins,
+    # soak committer dates, MANIFEST provenance
+    _prefetch_commit_info(
+        repodata.source_commit(name, index) for name in names)
 
     os.makedirs(os.path.join(outdir, "srcpkgs"), exist_ok=True)
 
