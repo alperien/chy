@@ -1,12 +1,11 @@
 #!/bin/sh
-# step 11 / doctor check 1: a search-path candidate that exists
-# but is not a loadable ELF (a one-line text file at usr/lib/<soname>)
-# makes the loader abort the whole trace with "error while loading
-# shared libraries: ...: file too short" instead of printing
-# "=> not found". The scan must recover the soname from the abort
-# message, never swallow it and report nothing. The junk file sits in
-# the root, not in the package: a shipped real file would be the
-# self-shipped case (612) and is deliberately silent.
+# step 12 / doctor check 1: a search-path candidate that exists but
+# isn't a loadable ELF (a one-line text file at usr/lib/<soname>) makes
+# the loader abort the whole trace with "error while loading shared
+# libraries: ...: file too short" instead of "=> not found". The scan
+# has to pull the soname out of the abort message, not swallow it and
+# report nothing. The junk sits in the root, not the package: a shipped
+# real file would be the self-shipped case (612), which stays silent.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

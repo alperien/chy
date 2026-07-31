@@ -1,8 +1,7 @@
 #!/bin/sh
-# step 11 shlibs.map parsing: a mapping needs two tokens. A
-# malformed line carrying only the soname is no mapping at all: it must
-# not shadow a valid later line for the same soname, and alone it must
-# not invent a hint.
+# step 12 shlibs.map parsing: a mapping needs two tokens. A line with
+# only the soname is no mapping: it can't shadow a valid later line for
+# the same soname, and alone it can't invent a hint.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

@@ -1,12 +1,12 @@
 #!/bin/sh
-# install step 11: after linking, every store-entry
-# regular file with the ELF magic is checked with ldd under the launcher
-# LD_LIBRARY_PATH convention; an unresolvable NEEDED soname produces
-# exactly `chy: <name>: warning: needs <soname>` on stderr, one line per
+# install step 12: after linking, every store regular file with the ELF
+# magic gets ldd under the launcher LD_LIBRARY_PATH convention; an
+# unresolvable NEEDED soname is exactly
+# `chy: <name>: warning: needs <soname>` on stderr, one line per
 # distinct missing soname, sorted, ` (package: <pkg>)` appended when
-# $CHY_ROOT/shlibs.map (significant-line rule, first two tokens, first
-# match wins) knows the soname. Warnings never affect exit status and
-# never undo the install.
+# $CHY_ROOT/shlibs.map knows it (significant lines, first two tokens,
+# first match wins). Warnings don't touch exit status and don't undo
+# the install.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -33,7 +33,7 @@ elf_install_pkg() {
     } >"$CHY_ROOT/recipes/$eip_name/build"
 }
 
-# --- a clean text-only package: step 11 has nothing to say ---
+# --- a clean text-only package: step 12 has nothing to say ---
 mkpkg "$CHY_ROOT" quiet 1.0 usr/bin/quiet-tool
 run_chy install quiet
 assert_rc 0 'text-only install'

@@ -1,10 +1,9 @@
 #!/bin/sh
-# step 11 self-shipped filter: a soname the package ships itself
-# is only satisfied when it resolves to a real file (find -L -type f). A
-# DANGLING usr/lib symlink for the needed soname must not suppress the
-# warning; a resolvable one, pointing at a shipped real library, must.
-# Doctor sees the dangling case twice: the needs finding and the broken
-# owned farm link.
+# step 12 self-shipped filter: a soname the package ships itself only
+# counts when it resolves to a real file (find -L -type f). A DANGLING
+# usr/lib symlink for the soname must not suppress the warning; a
+# resolvable one onto a shipped real library must. Doctor sees the
+# dangling case twice: the needs finding plus the broken owned link.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

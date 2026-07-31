@@ -69,7 +69,10 @@ assert_installed "$broot1" toyok 1.1 1
 
 # --- a failing build: verdict rewritten, the rest still attempted ---
 mkpkg "$seedroot" toybad '1.0 1'
-printf 'set -eu\necho doomed-build-marker >&2\nexit 7\n' \
+# a build script that reads stdin must never see the gate's name
+# queue; the gate closes stdin off as defense in depth (today chy's
+# own driver also shields it, but the gate must not depend on that)
+printf 'set -eu\nread -r eaten || true\necho doomed-build-marker >&2\nexit 7\n' \
     >"$seedroot/recipes/toybad/build"
 mv "$seedroot/recipes/toybad" "$repo/recipes/toybad"
 mkpkg "$seedroot" toyok '1.2 1' usr/toyok.txt

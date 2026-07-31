@@ -1,6 +1,6 @@
 #!/bin/sh
-# ci/repo-build.sh - the build gate over a staged sync (between steps
-# 4 and 5).
+# ci/repo-build.sh - the build gate over a staged sync: after
+# repo-sync.sh decides, before repo-apply.sh pushes.
 #
 # repo-sync.sh stages the day's diff and prepares commit.msg; this
 # gate proves the staged recipes actually build before repo-apply.sh
@@ -10,7 +10,7 @@
 # come from db/provided (seeded from the repo's own
 # provided.suggested). A failure writes issues/build-<name>.md, drops
 # commit.msg, and records the build-failed verdict: the all-or-nothing
-# rule extends to builds, so a day the gate rejects commits nothing.
+# rule covers builds, so a day the gate rejects commits nothing.
 #
 #   repo-build.sh --repo DIR --decisions DIR [--chy FILE] [--root DIR]
 #
@@ -51,23 +51,29 @@ if [ ! -f "$decisions/commit.msg" ]; then
     exit 0
 fi
 
+# scratch is always owned and temporary: it holds the staged-name
+# list and the per-package build logs even when --root is supplied,
+# so logs never land on a shared predictable path
+scratch=$(mktemp -d) || die 'mktemp -d failed'
+trap 'rm -rf "$scratch"' EXIT INT TERM
+
 # the recipes this sync touches: first path component under recipes/
-# in the staged diff. A name gone from the worktree is a prune and
+# in the staged diff. The git read is staged to a file and checked,
+# so a failing git cannot masquerade as an empty diff and wave the
+# day through unbuilt. A name gone from the worktree is a prune and
 # has nothing to build.
-names=$(git -C "$repo" diff --cached --name-only -- recipes/ \
-    | sed -n 's|^recipes/\([^/][^/]*\)/.*|\1|p' | LC_ALL=C sort -u)
+git -C "$repo" diff --cached --name-only -- recipes/ >"$scratch/staged" \
+    || die 'git diff --cached failed'
+names=$(sed -n 's|^recipes/\([^/][^/]*\)/.*|\1|p' "$scratch/staged" \
+    | LC_ALL=C sort -u)
 if [ -z "$names" ]; then
     say 'no recipe changes staged, nothing to build'
     exit 0
 fi
 
-scratch=''
-if [ -z "$root" ]; then
-    scratch=$(mktemp -d) || die 'mktemp -d failed'
-    trap 'rm -rf "$scratch"' EXIT INT TERM
-    root="$scratch/root"
-fi
+[ -n "$root" ] || root="$scratch/root"
 mkdir -p "$root/db"
+root=$(cd "$root" && pwd) || die "cannot resolve $root"
 repo_abs=$(cd "$repo" && pwd)
 [ -e "$root/recipes" ] || ln -s "$repo_abs/recipes" "$root/recipes"
 if [ -f "$repo/shlibs.map" ] && [ ! -f "$root/shlibs.map" ]; then
@@ -85,19 +91,27 @@ while IFS= read -r name; do
         say "pruned, not built: $name"
         continue
     fi
-    log="${scratch:-${TMPDIR:-/tmp}}/build-$name.log"
-    if CHY_ROOT="$root" sh "$chy" install "$name" >"$log" 2>&1; then
+    log="$scratch/build-$name.log"
+    : >"$log" || die "cannot write $log"
+    # stdin is closed off: the loop reads names from its own heredoc,
+    # and a build script that reads stdin must not eat the queue
+    rc=0
+    CHY_ROOT="$root" sh "$chy" install "$name" >"$log" 2>&1 </dev/null \
+        || rc=$?
+    if [ "$rc" -eq 0 ]; then
         built=$((built + 1))
         say "built: $name"
-        rm -f "$log"
         continue
     fi
+    # chy exits 2 when it could not even run (usage, root validation);
+    # that is the gate broken, not the package
+    [ "$rc" -ne 2 ] || die "chy could not run for $name: $(tail -n 1 "$log")"
     failed="$failed$name "
     say "build FAILED: $name"
     # the tail goes to the step log too: on a dry run the issue file
     # below is never filed, and a rejection nobody can read is noise
-    tail -n 15 "$log" 2>/dev/null | sed 's/^/repo-build:   /'
-    last=$(tail -n 1 "$log" 2>/dev/null) || last=''
+    tail -n 15 "$log" | sed 's/^/repo-build:   /'
+    last=$(tail -n 1 "$log") || last=''
     mkdir -p "$decisions/issues"
     {
         printf 'The build gate rejected the staged sync: %s failed to build.\n\n' "$name"
@@ -106,7 +120,7 @@ while IFS= read -r name; do
             "$repo/recipes/$name/meta" 2>/dev/null | head -n 1 | grep . \
             || printf 'unknown')"
         printf '\nlast 30 lines:\n\n```\n'
-        tail -n 30 "$log" 2>/dev/null || true
+        tail -n 30 "$log"
         printf '```\n\n'
         printf 'Nothing was committed (all-or-nothing). Translated output is\n'
         printf 'regenerated wholesale, so fix the translator or its inputs,\n'
@@ -115,7 +129,6 @@ while IFS= read -r name; do
         printf 'run: RUN_URL\n\n'
         printf 'reason-hash: %s\n' "$(hash_of "build $name: $last")"
     } >"$decisions/issues/build-$name.md"
-    rm -f "$log"
 done <<EOF
 $names
 EOF

@@ -369,17 +369,31 @@ prepare_build() { # prepare_build <name>
         [ -e "$pb_p" ] || continue
         printf '%s\n' "${pb_p##*/}"
     done | LC_ALL=C sort >"$CHY_ROOT/build/patchlist"
+    # the optional patchlevel file: "<n> <patchname>" per line, the
+    # name running to end of line, CRs tolerated like every recipe
+    # file; the translator derives the entries, a handwritten recipe
+    # may carry them too. A malformed entry, or one naming no patch,
+    # fails loudly here: a silent -p1 fallback would misapply the
+    # patch and blame the patch file.
+    if [ -f "$R_DIR/patchlevel" ]; then
+        pb_bad=$(awk 'NR == FNR { have[$0] = 1; next }
+            { sub(/\r$/, "") } !NF { next }
+            { v = $1; line = $0; sub(/^[^ \t]+[ \t]+/, "")
+              if (v ~ /[^0-9]/ || $0 == "" || $0 == line || !($0 in have)) {
+                  print line; exit } }' \
+            "$CHY_ROOT/build/patchlist" "$R_DIR/patchlevel")
+        [ -z "$pb_bad" ] || fail "$1" "bad patchlevel line: $pb_bad"
+    fi
     while IFS= read -r pb_p; do
         require "$1" patch
         step "$1" "apply $pb_p"
-        # strip level 1 unless the recipe's optional patchlevel file
-        # says otherwise ("<n> <patchname>" per line; the translator
-        # derives the entries, a handwritten recipe may carry them too)
         pb_lvl=1
         if [ -f "$R_DIR/patchlevel" ]; then
-            pb_lvl=$(awk -v p="$pb_p" \
-                'BEGIN { l = 1 } $2 == p { l = $1; exit } END { print l }' \
-                "$R_DIR/patchlevel")
+            pb_lvl=$(awk -v p="$pb_p" 'BEGIN { l = 1 }
+                { sub(/\r$/, "") } !NF { next }
+                { v = $1; sub(/^[^ \t]+[ \t]+/, "")
+                  if ($0 == p) { l = v; exit } }
+                END { print l }' "$R_DIR/patchlevel")
             case $pb_lvl in
                 ''|*[!0-9]*) fail "$1" "bad patchlevel entry for $pb_p" ;;
             esac

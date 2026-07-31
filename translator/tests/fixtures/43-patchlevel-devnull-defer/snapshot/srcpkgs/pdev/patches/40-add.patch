@@ -1,0 +1,8 @@
+--- /dev/null
++++ b/src/new.c
+@@ -0,0 +1 @@
++created
+--- a/src/old.c
++++ /dev/null
+@@ -1 +0,0 @@
+-removed

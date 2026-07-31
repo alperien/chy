@@ -1,9 +1,9 @@
 #!/bin/sh
-# ci/repo-apply.sh - act on a repo-sync verdict (step 5).
+# ci/repo-apply.sh - act on the final verdict, after the build gate.
 #
-# The only side-effectful half of the seam: pushes the repo commit
-# that ci/repo-sync.sh staged, and runs the issue lifecycle through
-# $gh. It executes decisions, it never makes them.
+# Pushes the repo commit ci/repo-sync.sh staged and the gate let stand,
+# and runs the issue lifecycle through $gh. Decisions were already
+# made, this only executes them.
 #
 #   repo-apply.sh --decisions DIR --repo DIR --issue-repo OWNER/REPO \
 #                   [--gh CMD]

@@ -253,7 +253,7 @@ assert_not_requested() { # root name
 # No compiler is assumed. To get an ELF with an unresolvable NEEDED entry,
 # copy a dynamically linked host binary and byte-patch ONE of its NEEDED
 # sonames to an equal-length name that exists nowhere; plain ldd then
-# reports `<fake> => not found`, which is the condition step 11 and
+# reports `<fake> => not found`, which is the condition step 12 and
 # doctor's check 1 must surface. Fixtures are built at test runtime (never
 # committed) and verified with ldd before use; a host offering no usable
 # template makes the caller SKIP, never fail.

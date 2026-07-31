@@ -1,0 +1,5 @@
+--- "a/has space.c"
++++ "b/has space.c"
+@@ -1 +1 @@
+-old
++new

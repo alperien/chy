@@ -1,9 +1,9 @@
 #!/bin/sh
-# step 11 / tools are checked when first needed. With no
-# ldd on PATH the install neither fails nor half-runs the scan: exactly
+# step 12, tools checked when first needed. No ldd on PATH: the install
+# neither fails nor half-runs the scan, exactly
 # `chy: <name>: warning: ldd unavailable; runtime verification skipped`
-# on stderr, exit 0, the package fully placed. True even for a package
-# whose ELF really does miss a soname.
+# on stderr, exit 0, package fully placed. Holds even when the ELF
+# really does miss a soname.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -57,7 +57,7 @@ assert_eq "$(cat "$ERR")" \
 assert_installed "$rn" needy 1.0 1
 
 # with ldd back, doctor sees what the skipped scan would have: the
-# package really was needy, only the missing tool silenced step 11
+# package really was needy, only the missing tool silenced step 12
 run_chy_root "$rn" doctor
 assert_rc 1 'ldd restored: the debt is visible'
 want=$(printf 'doctor: needy: needs %s\ndoctor: 1 problem(s)' "$fake_s")

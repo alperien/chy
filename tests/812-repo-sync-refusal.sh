@@ -38,11 +38,21 @@ for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
     cp "$g/expected/$f" "$TMPD/repo/$f"
 done
 printf 'chy default repo (generated)\n' >"$TMPD/repo/README.md"
+# a handwritten recipe outside the set: it has to ride the wholesale
+# regeneration untouched, even on a day that commits
+mkdir -p "$TMPD/repo/recipes/hand1"
+printf 'origin: handwritten\n' >"$TMPD/repo/recipes/hand1/meta"
+printf '1.0 1\n' >"$TMPD/repo/recipes/hand1/version"
+printf 'https://example.org/hand1.tar.gz\n' >"$TMPD/repo/recipes/hand1/sources"
+printf 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n' \
+    >"$TMPD/repo/recipes/hand1/checksums"
+printf '# frozen fixture build\nexit 1\n' >"$TMPD/repo/recipes/hand1/build"
 chmod 755 "$TMPD/repo"/recipes/*/build
 git -C "$TMPD/repo" add -A
 git -C "$TMPD/repo" -c user.name=seed -c user.email=seed@test \
     commit -qm 'seed: golden repo'
 git -C "$TMPD/repo" push -q origin HEAD:main
+hand0=$(sha256sum "$TMPD/repo/recipes/hand1/build" "$TMPD/repo/recipes/hand1/meta")
 
 mkdir -p "$TMPD/bin"
 printf '[]\n' >"$TMPD/issues.json"
@@ -87,6 +97,9 @@ assert_eq "$staged" report 'a held day stages the report and nothing else'
 grep -q '^zlib' "$TMPD/repo/provided.suggested" \
     && fail 'a held package leaked into provided.suggested'
 file_has "$TMPD/repo/report" 'refused: zlib'
+assert_eq "$(sha256sum "$TMPD/repo/recipes/hand1/build" \
+    "$TMPD/repo/recipes/hand1/meta")" "$hand0" \
+    'handwritten recipe must ride the regeneration untouched'
 
 # --- apply: the report commit pushes, one issue create. Invoked with
 #     RELATIVE paths, the workflow's shape: git -C would resolve a

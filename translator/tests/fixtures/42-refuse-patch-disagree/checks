@@ -1,0 +1,4 @@
+exit :: 1
+stderr-refusal :: pdis :: header sides disagree
+file-matches :: report :: ^refused: pdis:
+absent :: recipes/pdis

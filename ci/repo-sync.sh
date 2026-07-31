@@ -16,8 +16,10 @@
 #                           MANIFEST, counts body from the report, and a
 #                           literal RUN_URL the workflow substitutes with
 #                           the Actions run URL before apply
-#   nochange                no commit: contains unchanged or infra
-# issues/refused-NAME.md one issue body per refusal
+#   nochange                no commit: unchanged or infra (the build
+#                           gate may later rewrite it to build-failed
+#                           and drop commit.msg)
+#   issues/refused-NAME.md  one issue body per refusal
 #   issues/infra.md         translate died without writing a report
 #
 # Holdback: a refused package keeps its last translated recipe (it was
@@ -65,13 +67,17 @@ rm -rf "$decisions/issues"
 rm -f "$decisions/commit.msg" "$decisions/nochange"
 mkdir -p "$decisions"
 
-# the set: one name per significant line; whitespace separates names
+# the set: one name per significant line, whitespace separates names.
+# Globbing is off around the unquoted split so a stray * in the set
+# file can't expand against the working directory.
 set --
+set -f
 while IFS= read -r line; do
     case $line in ''|'#'*) continue ;; esac
     # shellcheck disable=SC2086 # splitting the line into names is the point
     set -- "$@" $line
 done <"$set_file"
+set +f
 [ $# -gt 0 ] || die "no package names in $set_file"
 
 # seed the out-root with each existing repo recipe whose package is
@@ -90,7 +96,7 @@ for meta in "$repo"/recipes/*/meta; do
     name=${dir##*/}
     case $set_names in
         *" $name "*) ;;
-        *) grep -q '^origin:[[:space:]]*handwritten[[:space:]]*$' "$meta" \
+        *) grep -q '^origin: handwritten[[:space:]]*$' "$meta" \
                || continue ;;
     esac
     cp -Rp "$dir" "$out/recipes/$name"

@@ -1260,6 +1260,76 @@ def case_40_patchlevel_args():
     c.finish()
 
 
+def case_42_refuse_patch_disagree():
+    # one header side carries the a/ marker, the other is bare: the
+    # eras cannot mix inside one pair, so this refuses instead of
+    # guessing a level.
+    c = Case("42-refuse-patch-disagree")
+    c.names("pdis")
+    c.template("pdis", tmpl("pdis"))
+    c.patch("pdis", "30-dis.patch",
+            "--- a/src/thing.c\n"
+            "+++ src/thing.c\n"
+            "@@ -1 +1 @@\n"
+            "-old\n"
+            "+new\n")
+    c.slice(E("pdis"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: pdis :: header sides disagree\n"
+        "file-matches :: report :: ^refused: pdis:\n"
+        "absent :: recipes/pdis\n"
+    )
+    c.finish()
+
+
+def case_43_patchlevel_devnull_defer():
+    # /dev/null sides (file adds and deletes) defer to the real side;
+    # an all-marker patch stays level 1, so no patchlevel file emits.
+    c = Case("43-patchlevel-devnull-defer")
+    c.names("pdev")
+    c.template("pdev", tmpl("pdev"))
+    c.patch("pdev", "40-add.patch",
+            "--- /dev/null\n"
+            "+++ b/src/new.c\n"
+            "@@ -0,0 +1 @@\n"
+            "+created\n"
+            "--- a/src/old.c\n"
+            "+++ /dev/null\n"
+            "@@ -1 +0,0 @@\n"
+            "-removed\n")
+    c.slice(E("pdev"))
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: report :: translated: pdev\n"
+        "absent :: recipes/pdev/patchlevel\n"
+    )
+    c.finish()
+
+
+def case_44_refuse_patch_quoted():
+    # git quotes header paths carrying spaces or non-ASCII; the
+    # whitespace split cannot parse those, so they refuse rather than
+    # misread the prefix as bare (-p0).
+    c = Case("44-refuse-patch-quoted")
+    c.names("pquo")
+    c.template("pquo", tmpl("pquo"))
+    c.patch("pquo", "50-quoted.patch",
+            '--- "a/has space.c"\n'
+            '+++ "b/has space.c"\n'
+            "@@ -1 +1 @@\n"
+            "-old\n"
+            "+new\n")
+    c.slice(E("pquo"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: pquo :: quoted header path\n"
+        "file-matches :: report :: ^refused: pquo:\n"
+        "absent :: recipes/pquo\n"
+    )
+    c.finish()
+
+
 def case_41_refuse_patch_args():
     # patch_args beyond a bare strip level (--directory and friends)
     # has no chy mapping and refuses.

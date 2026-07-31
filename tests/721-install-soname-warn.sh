@@ -1,11 +1,11 @@
 #!/bin/sh
-# upgrade, ABI safety: a reinstall that drops a
-# usr/lib soname prints `chy: <name>: warning: soname bump: <soname>` on
-# stderr (pipeline step 7, old manifest vs new file list). Plain
-# `install` emits the warning too but NEVER rebuilds dependents; only
-# `upgrade` schedules a rebuild set. The soname set is filename-based:
-# symlinks count, and the fully-versioned real file is dropped in favour
-# of the soname link it backs.
+# ABI safety: a reinstall that drops a usr/lib soname prints
+# `chy: <name>: warning: soname bump: <soname>` on stderr (in
+# retire_prev, old manifest vs new file list). Plain `install` warns
+# too but NEVER rebuilds dependents; only `upgrade` schedules a rebuild
+# set. The soname set is filename-based: symlinks count, the
+# fully-versioned real file drops in favour of the soname link it
+# backs.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091

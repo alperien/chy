@@ -1,9 +1,10 @@
 #!/bin/sh
-# all patches/*.patch and *.diff, as one merged list sorted by
-# byte order of filename, are applied with patch -p1 from the build dir
-# root; a patch that fails to apply aborts the build.
+# all patches/*.patch and *.diff, one merged list in byte order of
+# filename, apply from the build dir root at -p1, or at the level the
+# optional patchlevel file names per patch. A patch that doesn't apply
+# aborts the build.
 #
-# Needs patch(1); CI has it. Where it is absent this test skips.
+# Needs patch(1), CI has it. Absent, this test skips.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -124,6 +125,21 @@ run_chy remove plevel
 printf 'x 00-zero.patch\n' >"$r0/patchlevel"
 run_chy install plevel
 assert_rc 1 'a malformed patchlevel entry aborts'
-file_has "$ERR" 'bad patchlevel entry'
+file_has "$ERR" 'bad patchlevel line'
+
+# a DOS-edited entry (trailing CR) still names its level, every other
+# recipe file already tolerates CRs
+printf '0 00-zero.patch\r\n' >"$r0/patchlevel"
+run_chy install plevel
+assert_rc 0 'a CR-terminated patchlevel entry still applies'
+assert_eq "$(cat "$CHY_ROOT/usr/share/plevel/base.txt")" 'gamma' \
+    'levels honored under CRLF'
+
+# an entry naming no patch is a recipe defect, not a silent -p1
+run_chy remove plevel
+printf '0 no-such.patch\n' >"$r0/patchlevel"
+run_chy install plevel
+assert_rc 1 'a patchlevel entry naming no patch aborts'
+file_has "$ERR" 'bad patchlevel line'
 
 exit 0

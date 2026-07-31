@@ -37,19 +37,18 @@ class _SliceMiss(Exception):
 
 
 def _is_handwritten(outroot, name):
-    """True when recipes/<name>/meta under the output root says
-    'origin: handwritten'.  The handwritten short-circuit: never attempted,
-    never overwritten."""
+    """True when recipes/<name>/meta under the output root carries the
+    exact line 'origin: handwritten' (trailing whitespace tolerated).
+    One grammar, shared verbatim with ci/repo-sync.sh's seed grep and
+    emit.write's guard: a looser parser here once meant the three
+    could disagree and a handwritten recipe could be seeded by one
+    layer and overwritten by another.  Handwritten recipes are never
+    attempted and never overwritten."""
     meta = os.path.join(outroot, "recipes", name, "meta")
     if not os.path.isfile(meta):
         return False
     with open(meta, "r", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            key, sep, value = line.partition(":")
-            if sep and key.strip() == "origin" \
-                    and value.strip() == "handwritten":
-                return True
-    return False
+        return any(line.rstrip() == "origin: handwritten" for line in f)
 
 
 def _normalize_dump(dump_root, name):

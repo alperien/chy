@@ -1,0 +1,4 @@
+exit :: 1
+stderr-refusal :: pquo :: quoted header path
+file-matches :: report :: ^refused: pquo:
+absent :: recipes/pquo

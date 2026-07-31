@@ -1001,6 +1001,13 @@ def _patch_level(fname, data):
             fields_old = prev[4:].split()
             fields_new = raw[4:].split()
             if fields_old and fields_new:
+                if fields_old[0].startswith(b'"') \
+                        or fields_new[0].startswith(b'"'):
+                    # git quotes paths with spaces or non-ASCII; the
+                    # whitespace split above cannot parse those, so
+                    # refuse rather than misread the prefix
+                    raise Refuse('patches/%s: quoted header path is '
+                                 'outside the derivation idiom' % fname)
                 old = side(fields_old[0])
                 new = side(fields_new[0])
                 if old is not None and new is not None and old != new:
@@ -1312,7 +1319,7 @@ def write(result, outroot):
     meta = os.path.join(rdir, 'meta')
     if os.path.isfile(meta):
         with open(meta, encoding='utf-8') as f:
-            if any(l.strip() == 'origin: handwritten' for l in f):
+            if any(l.rstrip() == 'origin: handwritten' for l in f):
                 raise RuntimeError('refusing to overwrite handwritten '
                                    'recipe %s' % result.name)
     if os.path.isdir(rdir):

@@ -1,9 +1,9 @@
 #!/bin/sh
-# step 11: a NEEDED soname is data, never an option. An ELF
-# needing a dash-leading soname must produce the ordinary pinned warning
-# and nothing else on stderr; the scan's internal grep over self-shipped
-# names must not parse the soname as a flag and leak "grep: ..." noise.
-# Doctor shares the scan, so its finding and its stderr are pinned too.
+# step 12: an ELF needing a dash-leading soname gets the ordinary
+# pinned warning and nothing else on stderr; the scan's internal grep
+# over self-shipped names must not read the soname as a flag and leak
+# "grep: ..." noise. Doctor shares the scan, so its finding and stderr
+# are pinned too.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
