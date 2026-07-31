@@ -31,7 +31,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 360
     steps:
       - name: check out chy
         uses: actions/checkout@v4
@@ -72,6 +72,9 @@ jobs:
               || { xbps-install -Syu xbps \
                    && xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 \
                         $(grep -v "^#" tests/acceptance-hostpkgs | tr "\n" " "); }
+            # host stand-ins the staged repo itself names; tolerated here,
+            # a genuinely missing tool surfaces as a named build failure
+            xbps-install -Sy $(awk "NF {print \$1}" repo/provided.suggested | tr "\n" " ") || true
             git config --global --add safe.directory "*"
             sh ci/repo-build.sh --repo repo --decisions decisions'
 
