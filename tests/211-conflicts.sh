@@ -91,4 +91,19 @@ assert_eq "$(snap "$CHY_ROOT")" "$snap0" 'conflict left the user file alone'
 assert_eq "$(cat "$CHY_ROOT/usr/bin/victim")" 'user data' 'user file untouched'
 assert_not_installed "$CHY_ROOT" vic
 
+# --- registry files are normalized away, never owned: two packages
+#     both staging usr/share/info/dir (every GNU make install does)
+#     must not conflict, and the file must not reach the store ---
+mkpkg "$CHY_ROOT" infoa '1.0 1' usr/bin/infoa usr/share/info/dir \
+    usr/lib/charset.alias
+mkpkg "$CHY_ROOT" infob '1.0 1' usr/bin/infob usr/share/info/dir
+run_chy install infoa
+assert_rc 0 'first info-staging package installs'
+run_chy install infob
+assert_rc 0 'second info-staging package must not conflict on info/dir'
+assert_installed "$CHY_ROOT" infoa 1.0 1
+assert_installed "$CHY_ROOT" infob 1.0 1
+assert_absent "$CHY_ROOT/usr/share/info/dir"
+assert_absent "$CHY_ROOT/usr/lib/charset.alias"
+
 exit 0

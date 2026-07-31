@@ -452,6 +452,13 @@ normalize() { # normalize <name>
         fail "$1" "build installed nothing"
     fi
 
+    # registry files every install regenerates and no package can own:
+    # the texinfo directory index and gettext's charset.alias. Every
+    # GNU make install stages them, so the first package would claim
+    # them and every later one would conflict.
+    rm -f "$DEST$CHY_ROOT/usr/share/info/dir" \
+        "$DEST$CHY_ROOT/usr/lib/charset.alias"
+
     find "$DEST" -type l -print | while IFS= read -r n_p; do
         n_t=$(readlink "$n_p")
         case $n_t in
