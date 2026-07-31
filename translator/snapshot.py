@@ -399,6 +399,42 @@ def _commit_info(ref):
     return (full, epoch)
 
 
+def _disambiguate(abbrev, name):
+    """A commit abbreviation the API calls ambiguous or unknown, walked
+    through srcpkgs/<name>'s own history: the pinned commit touched the
+    package, so a unique prefix match there is the commit repodata
+    meant.  Returns the full sha, or "" (no token, no match, several
+    matches, any API failure)."""
+    if not os.environ.get("GITHUB_TOKEN"):
+        return ""
+    query = ('query { repository(owner: "void-linux", '
+             'name: "void-packages") { defaultBranchRef { target { '
+             '... on Commit { history(path: "srcpkgs/%s", first: 100) '
+             '{ nodes { oid committedDate } } } } } } }' % name)
+    try:
+        data = _graphql(query)
+        nodes = (data["data"]["repository"]["defaultBranchRef"]
+                 ["target"]["history"]["nodes"])
+    except (SnapshotError, KeyError, TypeError, ValueError):
+        return ""
+    hits = [n for n in nodes if isinstance(n, dict)
+            and isinstance(n.get("oid"), str)
+            and n["oid"].startswith(abbrev)]
+    if len(hits) != 1:
+        return ""
+    full = hits[0]["oid"]
+    date = hits[0].get("committedDate", "")
+    epoch = 0
+    if isinstance(date, str) and date:
+        try:
+            epoch = int(datetime.datetime.fromisoformat(
+                date.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            epoch = 0
+    _COMMIT_CACHE[abbrev] = (full, epoch)
+    return full
+
+
 def _full_commit(abbrev):
     """Expand an abbreviated source-revisions commit to the full 40-hex
     id (GitHub only serves fetch-by-SHA for full ids)."""
@@ -462,7 +498,23 @@ def _fetch_srcpkg_trees(names, index, outdir, tmp, pin=None):
             if abbrev is None:
                 raise SnapshotError("%s: repodata entry has no"
                                     " source-revisions commit" % name)
-            commits[name] = _full_commit(abbrev)
+            try:
+                commits[name] = _full_commit(abbrev)
+            except SnapshotError:
+                # a stale or ambiguous abbreviation (void-packages has
+                # enough commits that seven hex digits collide).  Try
+                # the package's own history for a commit matching the
+                # prefix; failing that, skip the tree.  The package's
+                # soak clocks read 0 for the same reason, so translate
+                # defers it: one odd ref only holds up that one
+                # package.
+                full = _disambiguate(abbrev, name)
+                if full:
+                    commits[name] = full
+                    continue
+                sys.stderr.write("chytrans: WARNING: %s: source commit"
+                                 " %s did not resolve; tree skipped,"
+                                 " package defers\n" % (name, abbrev))
     for sha in sorted(set(commits.values())):
         proc = _run(["git", "fetch", "-q", "--depth", "1",
                      "--filter=blob:none", "void", sha], cwd=gitdir)
@@ -470,6 +522,8 @@ def _fetch_srcpkg_trees(names, index, outdir, tmp, pin=None):
             raise SnapshotError("git fetch %s failed: %s"
                                 % (sha, proc.stderr.decode().strip()))
     for name in names:
+        if name not in commits:
+            continue  # tree skipped above; the package defers
         # checkout of specific paths pulls just those blobs on demand
         # from the promisor remote.
         proc = _run(["git", "checkout", "-q", commits[name], "--",
