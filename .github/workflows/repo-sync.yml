@@ -77,7 +77,10 @@ jobs:
             # a genuinely missing tool surfaces as a named build failure
             xbps-install -Sy $(awk "NF {print \$1}" repo/provided.suggested | tr "\n" " ") || true
             git config --global --add safe.directory "*"
-            sh ci/repo-build.sh --repo repo --decisions decisions'
+            sh ci/repo-build.sh --repo repo --decisions decisions
+            rc=$?
+            chown -R "$(stat -c %u:%g .)" decisions repo 2>/dev/null || true
+            exit $rc'
 
       - name: show the decision
         if: always()

@@ -29,34 +29,20 @@ dbus
 # C-tier backfill, chunk 1: closure-closed leaves from the 2026-07-31
 # coverage sweep (594 total queued; ~50 per sync while the gate builds
 # uncached).
-64tass
 6tunnel
 9mount
-ETL
 Haru
 a4
-abcmidi
 abduco
 acct
 acpi
 acpica-utils
 acpid
 acr
-adjtimex
 aggregate
 aha
 argon2
-argtable
 asio
-aspell-cs
-aspell-de
-aspell-en
-aspell-it
-aspell-nl
-aspell-pl
-aspell-pt_BR
-aspell-ru
-aspell-sk
 atinout
 attr
 b43-fwcutter
@@ -64,18 +50,138 @@ bbe
 bdftopcf
 bootchart
 bootterm
-brillo
 byacc
 bzip3
 c-ares
 can-utils
 cc65
-ccd2iso
 cciss_vol_status
 cflow
 cfm
 check
 chelf
-chmlib
 chrpath
 ck
+
+# quarantined from chunk 1 by the build gate (2026-07-31): translated
+# but did not build. Reasons live in the gate log of run 30583862822;
+# each returns when its translator gap or host tool lands.
+#   64tass
+#   ETL
+#   abcmidi
+#   adjtimex
+#   argtable
+#   aspell-cs
+#   aspell-de
+#   aspell-en
+#   aspell-it
+#   aspell-nl
+#   aspell-pl
+#   aspell-pt_BR
+#   aspell-ru
+#   aspell-sk
+#   brillo
+#   ccd2iso
+#   chmlib
+
+# C-tier backfill, chunk 2 (closure-closed, 100 names)
+clac
+cldr-emoji-annotation
+cliquer
+cmdpack
+cmuclmtk
+compsize
+confuse
+containers-common
+convmv
+cpio
+cproto
+cpufetch
+cpuid
+cpuinfo
+cronutils
+csvcut
+dadadodo
+dhcping
+diction
+diffstat
+diffutils
+ding-libs
+discount
+dnstracer
+dosfstools
+dsvpn
+dtach
+dte
+duff
+dumb-init
+dxa
+eb
+ecm-tools
+elfkickers
+ell
+enchive
+endlessh
+enscript
+epub2txt
+execline-man-pages
+exfat-utils
+fail
+fakechroot
+faketime
+fastjar
+fastttyrec
+fbgrab
+fcount
+fdk-aac
+fex
+fiche
+fig2dev
+file
+filter_audio
+fmtools
+font-alias
+forkstat
+fping
+freexl
+fribidi
+fsbext
+fstrcmp
+gavl
+gccmakedep
+gdbm
+genext2fs
+gforth
+giflib
+gmp
+gnome-icon-theme
+gnugo
+gnushogi
+gnustep-make
+gputils
+grep
+gsl
+gzip
+haveged
+hdapsd
+hello
+hexd
+hiredis
+hostaliases
+http-parser
+httptunnel
+hyx
+iat
+icoutils
+ictree
+ii
+input-utils
+intel-undervolt
+interbench
+ioping
+iouyap
+iperf3
+iscan-data
+iucode-tool
+jansson
+jhead
