@@ -63,6 +63,31 @@ chelf
 chrpath
 ck
 
+# quarantined from chunk 2 by the build gate (2026-07-31): translated
+# but did not build; per-package reasons in the build-failed issues.
+#   containers-common
+#   cpuid
+#   cronutils
+#   discount
+#   dte
+#   eb
+#   ecm-tools
+#   elfkickers
+#   fakechroot
+#   faketime
+#   fbgrab
+#   font-alias
+#   forkstat
+#   fsbext
+#   fstrcmp
+#   gavl
+#   gnushogi
+#   hostaliases
+#   httptunnel
+#   intel-undervolt
+#   interbench
+#   iouyap
+
 # quarantined from chunk 1 by the build gate (2026-07-31): translated
 # but did not build. Reasons live in the gate log of run 30583862822;
 # each returns when its translator gap or host tool lands.
@@ -92,14 +117,11 @@ cmdpack
 cmuclmtk
 compsize
 confuse
-containers-common
 convmv
 cpio
 cproto
 cpufetch
-cpuid
 cpuinfo
-cronutils
 csvcut
 dadadodo
 dhcping
@@ -107,18 +129,13 @@ diction
 diffstat
 diffutils
 ding-libs
-discount
 dnstracer
 dosfstools
 dsvpn
 dtach
-dte
 duff
 dumb-init
 dxa
-eb
-ecm-tools
-elfkickers
 ell
 enchive
 endlessh
@@ -127,11 +144,8 @@ epub2txt
 execline-man-pages
 exfat-utils
 fail
-fakechroot
-faketime
 fastjar
 fastttyrec
-fbgrab
 fcount
 fdk-aac
 fex
@@ -140,14 +154,9 @@ fig2dev
 file
 filter_audio
 fmtools
-font-alias
-forkstat
 fping
 freexl
 fribidi
-fsbext
-fstrcmp
-gavl
 gccmakedep
 gdbm
 genext2fs
@@ -156,7 +165,6 @@ giflib
 gmp
 gnome-icon-theme
 gnugo
-gnushogi
 gnustep-make
 gputils
 grep
@@ -167,19 +175,14 @@ hdapsd
 hello
 hexd
 hiredis
-hostaliases
 http-parser
-httptunnel
 hyx
 iat
 icoutils
 ictree
 ii
 input-utils
-intel-undervolt
-interbench
 ioping
-iouyap
 iperf3
 iscan-data
 iucode-tool
