@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: shellcheck, POSIX mode
-        run: shellcheck --shell=sh chy/chy test tests/*.sh ci/repo-*.sh
+        run: shellcheck --shell=sh chy/chy test tests/*.sh ci/*.sh
 
       - name: shellcheck, bash mode (the template evaluator)
         run: shellcheck --shell=bash translator/evaluate.sh

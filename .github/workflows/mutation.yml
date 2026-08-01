@@ -1,0 +1,44 @@
+# Weekly check that the suite still catches a real bug: ci/mutation-check.sh
+# applies a pinned damaging mutation to chy, expects failure, restores,
+# expects success. A miss files its own issue title so check state
+# never mixes with sync infra under title-keyed dedup.
+name: mutation
+
+on:
+  schedule:
+    - cron: '41 4 * * 1'          # Mondays 04:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: ghcr.io/void-linux/void-glibc-full:latest
+    steps:
+      - name: prepare container
+        run: xbps-install -Sy git ca-certificates curl patch xz python3 bash || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates curl patch xz python3 bash; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: run the check
+        run: sh ci/mutation-check.sh
+
+      - name: file the miss
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title='repo-sync: mutation check failed'
+          if ! gh issue list --repo "${{ github.repository }}" --state open \
+              --json title --jq '.[].title' | grep -Fqx "$title"; then
+            printf 'The weekly mutation check failed (status: %s): either the suite passed against broken code, failed on pristine code, or the pinned mutation rotted. The run log names which.\n\nrun: %s\n' \
+              "${{ job.status }}" "$RUN_URL" \
+              | gh issue create --repo "${{ github.repository }}" \
+                  --title "$title" --body-file -
+          fi
