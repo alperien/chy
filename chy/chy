@@ -1113,10 +1113,29 @@ order_awk() { # order_awk <install|cascade>
 }
 
 # verbs
+# The recipe repo can name the oldest chy that reads its contract (a
+# min-chy file beside recipes/). A newer repo against an older chy
+# would misread recipes silently, so chy refuses loudly instead.
+check_min_chy() {
+    mc_f=$CHY_ROOT/recipes/../min-chy
+    [ -f "$mc_f" ] || return 0
+    mc_want=$(head -n 1 "$mc_f")
+    mc_want=${mc_want%"$CR"}
+    case $mc_want in ''|*[!0-9.]*) return 0 ;; esac
+    mc_newer=$(printf '%s\n%s\n' "$mc_want" "$CHY_VERSION" \
+        | LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+    [ "$mc_newer" = "$CHY_VERSION" ] || {
+        printf 'chy: error: this recipe repo needs chy >= %s (this is %s)\n' \
+            "$mc_want" "$CHY_VERSION" >&2
+        exit 1
+    }
+}
+
 cmd_install() {
     ci_nodeps=0
     if [ "${1-}" = --no-deps ]; then ci_nodeps=1; shift; fi
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
+    check_min_chy
 
     # Resolution step 1: duplicates collapse (first occurrence wins). A
     # requested name the host provides is skipped with a warning. No
@@ -1538,6 +1557,7 @@ upgrade_run() { # upgrade_run <ordered names>
 
 cmd_upgrade() {
     no_opts "$@"
+    check_min_chy
     PROVIDED=" $(provided_names | tr '\n' ' ')"
 
     CU_T=' ' cu_names=''

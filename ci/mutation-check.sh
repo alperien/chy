@@ -34,6 +34,7 @@ trap 'cp "$work/chy.orig" chy/chy 2>/dev/null || :; rm -rf "$work"' \
     EXIT INT TERM
 cp chy/chy "$work/chy.orig"
 
+# shellcheck disable=SC2016 # the dollars are literal: they match chy source
 sed 's/\[ "\$2" = "\$R_VER" \]/[ "$2" != "$R_VER" ]/' \
     "$work/chy.orig" >chy/chy
 if cmp -s "$work/chy.orig" chy/chy; then

@@ -26,6 +26,11 @@ import snapshot
 
 TRANSLATOR_VERSION = "1"
 
+# the oldest chy that reads every contract this translator emits
+# (patchlevel arrived with 0.5.0). Bumps only in contract-widening
+# changes; chy refuses repos newer than itself.
+MIN_CHY = "0.5.0"
+
 
 class _SliceMiss(Exception):
     """A flatten or closure lookup missed the snapshot slice;
@@ -292,6 +297,7 @@ def cmd_translate(args):
     _write_lines(os.path.join(outroot, "report"), report)
     _write_lines(os.path.join(outroot, "TRANSLATOR_VERSION"),
                  [TRANSLATOR_VERSION])
+    _write_lines(os.path.join(outroot, "min-chy"), [MIN_CHY])
 
     # exit 0 iff every requested package was translated, is a kept
     # handwritten exception, or was deferred by the soak gate.

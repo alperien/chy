@@ -190,7 +190,7 @@ fi
 
 rm -rf "$repo/recipes"
 cp -Rp "$out/recipes" "$repo/recipes"
-for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
+for f in shlibs.map provided.suggested report TRANSLATOR_VERSION min-chy; do
     [ -f "$out/$f" ] || die "translate wrote no $f"
     cp -p "$out/$f" "$repo/$f"
 done

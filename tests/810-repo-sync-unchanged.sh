@@ -27,7 +27,7 @@ git -C "$TMPD/repo.git" symbolic-ref HEAD refs/heads/main
 git clone -q "$TMPD/repo.git" "$TMPD/repo" 2>/dev/null
 git -C "$TMPD/repo" symbolic-ref HEAD refs/heads/main
 cp -R "$g/expected/recipes" "$TMPD/repo/recipes"
-for f in shlibs.map provided.suggested report TRANSLATOR_VERSION; do
+for f in shlibs.map provided.suggested report TRANSLATOR_VERSION min-chy; do
     cp "$g/expected/$f" "$TMPD/repo/$f"
 done
 printf 'chy default repo (generated)\n' >"$TMPD/repo/README.md"
