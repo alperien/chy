@@ -129,9 +129,10 @@ for f in "$decisions/issues"/*.md; do
 done
 
 # auto-close after a push: an open refusal or build failure whose
-# package the freshly committed report shows translated is fixed (a
-# push only happens once the build gate passed, so translated in a
-# pushed report implies built)
+# package the freshly committed report shows translated is fixed. A
+# gate-held name also reads "translated" in the pushed report while its
+# recipe didn't land, so any name with a build issue in TODAY's
+# decisions is skipped, its hold is the live state, not a fix.
 if [ "$pushed" -eq 1 ]; then
     [ -f "$repo/report" ] || die "no report in $repo after a push"
     while IFS=$tab read -r num _ title; do
@@ -141,6 +142,7 @@ if [ "$pushed" -eq 1 ]; then
                 name=${title#repo-sync: build failed: } ;;
             *) continue ;;
         esac
+        [ ! -f "$decisions/issues/build-$name.md" ] || continue
         grep -Fqx "translated: $name" "$repo/report" || continue
         "$gh" issue close "$num" --repo "$issue_repo" \
             --comment "repo-sync: $name translated cleanly again; closing."
