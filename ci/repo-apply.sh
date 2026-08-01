@@ -108,6 +108,7 @@ for f in "$decisions/issues"/*.md; do
         build-*.md)
             name=${base#build-}; name=${name%.md}
             title="repo-sync: build failed: $name" ;;
+        doctor.md) title='repo-sync: doctor found problems' ;;
         infra.md) title='repo-sync: infrastructure failure' ;;
         lock.md) title='repo-sync: repo lock loosened' ;;
         *) die "unrecognized decision issue: $base" ;;

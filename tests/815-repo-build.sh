@@ -334,4 +334,27 @@ file_has "$OUT" 'starting fresh'
 assert_installed "$broot" toylib 2.0 1
 assert_not_installed "$broot" toyapp
 
+# --- doctor gates the day: a root whose installed files went missing
+#     rejects after an otherwise clean build ---
+git -C "$repo" -c user.name=seed -c user.email=seed@test \
+    commit -qm 'day 3 state' >/dev/null 2>&1 || true
+rm -f "$broot/usr/lib/toylib.txt"
+mkpkg "$seedroot" toyapp '3.0 1' usr/bin/toyapp
+recipe_list "$seedroot" toyapp depends toylib
+rm -rf "$repo/recipes/toyapp"
+mv "$seedroot/recipes/toyapp" "$repo/recipes/toyapp"
+cp "$seedroot/cache/seed-toyapp.txt" "$broot/cache/"
+git -C "$repo" add -A
+mkdir -p "$TMPD/dec9"
+printf 'test commit\n' >"$TMPD/dec9/commit.msg"
+
+run sh ci/repo-build.sh --repo "$repo" --decisions "$TMPD/dec9" \
+    --root "$broot"
+assert_rc 0 'gate decides on a doctor finding'
+file_has "$OUT" 'doctor found problems'
+assert_absent "$TMPD/dec9/commit.msg"
+assert_eq "$(cat "$TMPD/dec9/nochange")" doctor-failed 'nochange verdict'
+file_has "$TMPD/dec9/issues/doctor.md" 'missing'
+file_matches "$TMPD/dec9/issues/doctor.md" '^reason-hash: [0-9a-f]\{64\}$'
+
 exit 0

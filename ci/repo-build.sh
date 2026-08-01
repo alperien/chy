@@ -346,6 +346,36 @@ while :; do
     git -C "$repo" add -A
 done
 
+# every published library has to resolve: doctor over the final root,
+# which is the shipped combination. Exit 1 is findings (reject the day,
+# issue filed), anything past 1 is doctor itself broken (infra).
+# Coverage converges on the whole repo as the cached root accretes.
+doctor_log="$scratch/doctor.log"
+rc=0
+CHY_ROOT="$root" sh "$chy" doctor >"$doctor_log" 2>&1 </dev/null || rc=$?
+if [ "$rc" -eq 1 ]; then
+    say 'doctor found problems in the built root'
+    sed 's/^/repo-build:   /' <"$doctor_log"
+    mkdir -p "$decisions/issues"
+    {
+        printf 'Doctor found problems in the built root after a clean gate.\n\n'
+        printf '```\n'
+        tail -n 30 "$doctor_log"
+        printf '```\n\n'
+        printf 'Nothing was committed. Note: cleanliness here depends on the\n'
+        printf 'tolerated provided.suggested install in the gate container;\n'
+        printf 'a partial host-package outage can surface as unresolved\n'
+        printf 'libraries. Check that before blaming a recipe.\n\n'
+        printf 'run: RUN_URL\n\n'
+        printf 'reason-hash: %s\n' "$(hash_of "doctor: $(tail -n 1 "$doctor_log")")"
+    } >"$decisions/issues/doctor.md"
+    rm -f "$decisions/commit.msg"
+    printf 'doctor-failed\n' >"$decisions/nochange"
+    exit 0
+fi
+[ "$rc" -eq 0 ] || die "doctor could not run: $(tail -n 1 "$doctor_log")"
+say 'doctor clean over the built root'
+
 if [ -n "$held$held_absent" ]; then
     printf 'gate held: %s\n' "$(printf '%s' "$held$held_absent" \
         | tr ' ' '\n' | awk 'NF' | LC_ALL=C sort | tr '\n' ' ' \
