@@ -65,6 +65,18 @@ jobs:
       - name: translate and decide (offline, deterministic)
         run: sh ci/repo-sync.sh --snapshot snap --repo repo --set default.set --decisions decisions --translator translator
 
+      - name: cache week (weekly cold starts bound root growth)
+        id: week
+        run: echo "week=$(date -u +%G%V)" >> "$GITHUB_OUTPUT"
+
+      - name: restore the gate root
+        uses: actions/cache/restore@v4
+        with:
+          path: gate-root
+          key: gate-root-${{ hashFiles('chy/chy', 'ci/repo-build.sh') }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
+          restore-keys: |
+            gate-root-${{ hashFiles('chy/chy', 'ci/repo-build.sh') }}-${{ steps.week.outputs.week }}-
+
       - name: build gate (staged recipes, in the Void container)
         run: |
           docker run --rm -v "$PWD:/w" -w /w ghcr.io/void-linux/void-glibc-full:latest sh -c '
@@ -77,10 +89,17 @@ jobs:
             # a genuinely missing tool surfaces as a named build failure
             xbps-install -Sy $(awk "NF {print \$1}" repo/provided.suggested | tr "\n" " ") || true
             git config --global --add safe.directory "*"
-            sh ci/repo-build.sh --repo repo --decisions decisions
+            sh ci/repo-build.sh --repo repo --decisions decisions --root /w/gate-root
             rc=$?
-            chown -R "$(stat -c %u:%g .)" decisions repo 2>/dev/null || true
+            chown -R "$(stat -c %u:%g .)" decisions repo gate-root 2>/dev/null || true
             exit $rc'
+
+      - name: save the gate root (only when the day pushes)
+        if: ${{ hashFiles('decisions/commit.msg') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: gate-root
+          key: gate-root-${{ hashFiles('chy/chy', 'ci/repo-build.sh') }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
 
       - name: show the decision
         if: always()
