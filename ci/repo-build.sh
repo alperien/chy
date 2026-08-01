@@ -75,12 +75,66 @@ fi
 mkdir -p "$root/db"
 root=$(cd "$root" && pwd) || die "cannot resolve $root"
 repo_abs=$(cd "$repo" && pwd)
+
+# reconcile a reused root to the staged repo before building.  The
+# resolver satisfies dependencies by presence alone and never reads a
+# version, so anything installed that the staged repo no longer
+# vouches for (recipe gone, or version drifted from the staged recipe)
+# must go, along with every diff name (explicit targets rebuild).  chy
+# refuses to remove a depended-on package, so removal runs in passes;
+# a pass that removes nothing with work left means the root cannot be
+# reconciled cheaply, and it is discarded instead.  Fresh roots skip
+# all of this.
+reconcile_root() {
+    rr_list="$scratch/reconcile"
+    : >"$rr_list"
+    for rr_d in "$root/db/installed/"*/; do
+        [ -d "$rr_d" ] || continue
+        rr_n=${rr_d%/}; rr_n=${rr_n##*/}
+        if [ ! -d "$repo/recipes/$rr_n" ]; then
+            printf '%s\n' "$rr_n" >>"$rr_list"
+            continue
+        fi
+        rr_iv=$(cat "$rr_d/version" 2>/dev/null) || rr_iv=''
+        rr_rv=$(head -n 1 "$repo/recipes/$rr_n/version" 2>/dev/null) || rr_rv=''
+        case $rr_iv in *' '*) ;; *) rr_iv="$rr_iv 1" ;; esac
+        case $rr_rv in *' '*) ;; *) rr_rv="$rr_rv 1" ;; esac
+        [ "$rr_iv" = "$rr_rv" ] || printf '%s\n' "$rr_n" >>"$rr_list"
+    done
+    printf '%s\n' "$names" >>"$rr_list"
+    while :; do
+        rr_progress=0 rr_stuck=0
+        while IFS= read -r rr_n; do
+            [ -n "$rr_n" ] || continue
+            [ -d "$root/db/installed/$rr_n" ] || continue
+            if CHY_ROOT="$root" sh "$chy" remove "$rr_n" \
+                >/dev/null 2>&1 </dev/null; then
+                rr_progress=1
+            else
+                rr_stuck=1
+            fi
+        done <"$rr_list"
+        [ "$rr_stuck" -eq 1 ] || break
+        if [ "$rr_progress" -eq 0 ]; then
+            # keep cache/ (checksum-verified downloads); wipe the state
+            say 'reused root cannot be reconciled; starting fresh'
+            rm -rf "${root:?}/db" "${root:?}/store" "${root:?}/usr" \
+                "${root:?}/build" "${root:?}/recipes" "${root:?}/shlibs.map"
+            mkdir -p "$root/db"
+            break
+        fi
+    done
+}
+if [ -d "$root/db/installed" ]; then
+    reconcile_root
+fi
+
 [ -e "$root/recipes" ] || ln -s "$repo_abs/recipes" "$root/recipes"
-if [ -f "$repo/shlibs.map" ] && [ ! -f "$root/shlibs.map" ]; then
+# side files refresh every run: a reused root must see today's repo
+if [ -f "$repo/shlibs.map" ]; then
     cp "$repo/shlibs.map" "$root/shlibs.map"
 fi
-# host-provided names: the first column of the repo's own suggestions
-if [ -f "$repo/provided.suggested" ] && [ ! -f "$root/db/provided" ]; then
+if [ -f "$repo/provided.suggested" ]; then
     awk 'NF {print $1}' "$repo/provided.suggested" >"$root/db/provided"
 fi
 

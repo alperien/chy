@@ -121,4 +121,81 @@ file_has "$TMPD/gh.log" 'repo-sync: build failed: toybad'
 assert_eq "$(git -C "$repo" rev-parse HEAD)" "$head0" \
     'apply must not commit on a build-failed day'
 
+# --- warm-root reuse: reconcile removes what the staged repo no
+#     longer vouches for, keeps clean deps unbuilt, and discards an
+#     un-reconcilable root (keeping cache/) ---
+git -C "$repo" -c user.name=seed -c user.email=seed@test \
+    commit -qm 'baseline for reuse cases'
+
+# day 1: toylib plus toyapp (depends toylib) plus toygone2
+mkpkg "$seedroot" toylib '1.0 1' usr/lib/toylib.txt
+printf 'printf x >>"%s"\n' "$TMPD/stamp-toylib" \
+    >>"$seedroot/recipes/toylib/build"
+mkpkg "$seedroot" toyapp '1.0 1' usr/bin/toyapp
+recipe_list "$seedroot" toyapp depends toylib
+mkpkg "$seedroot" toygone2 '1.0 1' usr/share/gone2.txt
+for n in toylib toyapp toygone2; do
+    rm -rf "$repo/recipes/$n"
+    mv "$seedroot/recipes/$n" "$repo/recipes/$n"
+done
+git -C "$repo" add -A
+mkdir -p "$TMPD/dec5"
+printf 'test commit\n' >"$TMPD/dec5/commit.msg"
+broot="$TMPD/broot-warm"
+mkdir -p "$broot/cache"
+cp "$seedroot/cache/"* "$broot/cache/"
+
+run sh ci/repo-build.sh --repo "$repo" --decisions "$TMPD/dec5" \
+    --root "$broot"
+assert_rc 0 'warm-root day 1'
+[ -f "$TMPD/dec5/commit.msg" ] || fail 'day 1 should stand'
+assert_installed "$broot" toylib 1.0 1
+assert_installed "$broot" toyapp 1.0 1
+stamps1=$(wc -c <"$TMPD/stamp-toylib")
+
+# day 2: bump toyapp, drop toygone2's recipe; toylib untouched
+git -C "$repo" -c user.name=seed -c user.email=seed@test \
+    commit -qm 'day 1 state'
+mkpkg "$seedroot" toyapp '2.0 1' usr/bin/toyapp
+recipe_list "$seedroot" toyapp depends toylib
+rm -rf "$repo/recipes/toyapp"
+mv "$seedroot/recipes/toyapp" "$repo/recipes/toyapp"
+cp "$seedroot/cache/seed-toyapp.txt" "$broot/cache/"
+git -C "$repo" rm -r -q recipes/toygone2
+git -C "$repo" add -A
+mkdir -p "$TMPD/dec6"
+printf 'test commit\n' >"$TMPD/dec6/commit.msg"
+
+run sh ci/repo-build.sh --repo "$repo" --decisions "$TMPD/dec6" \
+    --root "$broot"
+assert_rc 0 'warm-root day 2'
+[ -f "$TMPD/dec6/commit.msg" ] || fail 'day 2 should stand'
+assert_installed "$broot" toyapp 2.0 1
+assert_not_installed "$broot" toygone2
+assert_eq "$(wc -c <"$TMPD/stamp-toylib")" "$stamps1" \
+    'an unchanged dependency must not rebuild on a warm root'
+
+# day 3: bump toylib while installed toyapp still depends on it; the
+# removal is vetoed, the root discards (cache kept), the diff builds
+# fresh
+git -C "$repo" -c user.name=seed -c user.email=seed@test \
+    commit -qm 'day 2 state'
+mkpkg "$seedroot" toylib '2.0 1' usr/lib/toylib.txt
+printf 'printf x >>"%s"\n' "$TMPD/stamp-toylib" \
+    >>"$seedroot/recipes/toylib/build"
+rm -rf "$repo/recipes/toylib"
+mv "$seedroot/recipes/toylib" "$repo/recipes/toylib"
+cp "$seedroot/cache/seed-toylib.txt" "$broot/cache/"
+git -C "$repo" add -A
+mkdir -p "$TMPD/dec7"
+printf 'test commit\n' >"$TMPD/dec7/commit.msg"
+
+run sh ci/repo-build.sh --repo "$repo" --decisions "$TMPD/dec7" \
+    --root "$broot"
+assert_rc 0 'warm-root day 3'
+file_has "$OUT" 'starting fresh'
+[ -f "$TMPD/dec7/commit.msg" ] || fail 'day 3 should stand'
+assert_installed "$broot" toylib 2.0 1
+assert_not_installed "$broot" toyapp
+
 exit 0
