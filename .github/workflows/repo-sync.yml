@@ -35,10 +35,10 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: check out chy
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: check out the recipe repo (deploy key)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: alperien/chy-recipes
           ssh-key: ${{ secrets.RECIPES_DEPLOY_KEY }}
@@ -70,7 +70,7 @@ jobs:
         run: echo "week=$(date -u +%G%V)" >> "$GITHUB_OUTPUT"
 
       - name: restore the gate root
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: gate-root
           key: gate-root-${{ hashFiles('chy/chy', 'ci/repo-build.sh') }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
@@ -96,7 +96,7 @@ jobs:
 
       - name: save the gate root (only when the day pushes)
         if: ${{ hashFiles('decisions/commit.msg') != '' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: gate-root
           key: gate-root-${{ hashFiles('chy/chy', 'ci/repo-build.sh') }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
@@ -113,6 +113,21 @@ jobs:
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           find decisions -type f -exec sed -i "s#RUN_URL#$RUN_URL#g" {} +
           sh ci/repo-apply.sh --decisions decisions --repo repo --issue-repo ${{ github.repository }}
+
+      - name: file the crash (the run died before a verdict)
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title='repo-sync: run failed before a verdict'
+          if ! gh issue list --repo "${{ github.repository }}" --state open \
+              --json title --jq '.[].title' | grep -Fqx "$title"; then
+            printf 'A sync run died before reaching a verdict (status: %s).\nA timeout here usually means an oversized set chunk.\n\nrun: %s\n' \
+              "${{ job.status }}" "$RUN_URL" \
+              | gh issue create --repo "${{ github.repository }}" \
+                  --title "$title" --body-file -
+          fi
 
       - name: keepalive (reset the 60-day schedule-disable timer)
         if: github.event_name == 'schedule'

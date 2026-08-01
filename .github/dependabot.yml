@@ -1,0 +1,10 @@
+# Bumps the SHA-pinned actions in workflows/ (the Void container image
+# deliberately stays on :latest: the base and the rolling repodata must
+# move together, and the xbps -Syu fallback exists for exactly that
+# drift).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
