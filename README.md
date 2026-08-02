@@ -9,8 +9,6 @@ userland and won't write outside its root, so deleting the folder is
 equal to a full uninstall. Running chy with no arguments prints the list
 of all options.
 
-![chy](docs/chy-usage.png)
-
 ## getting started
 
     git clone https://github.com/alperien/chy && cd chy
