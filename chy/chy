@@ -1,6 +1,5 @@
 #!/bin/sh
-# chy is a byte-sized, portable, source-based package manager written in
-# POSIX shell. 1.6k lines of pretty shell with no dependencies.
+# chy is a byte-sized, portable, source-based package manager written in POSIX shell.
 #
 # install builds each package into store/<name>-<version>/, links it into
 # the usr/ symlink farm, and records it under db/installed/. upgrade,
