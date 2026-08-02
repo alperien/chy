@@ -11,12 +11,16 @@ of all options.
 
 ![chy](docs/chy-usage.png)
 
+## getting started
+
     git clone https://github.com/alperien/chy && cd chy
     git clone https://github.com/alperien/chy-recipes
     export CHY_ROOT=$HOME/.chy PATH="$HOME/.chy/usr/bin:$PATH"
     mkdir -p "$CHY_ROOT" && ln -s "$PWD/chy-recipes/recipes" "$CHY_ROOT/recipes"
     cp chy-recipes/shlibs.map "$CHY_ROOT/shlibs.map"
     sh chy/chy install freetype
+
+## recipes
 
 Packages are recipe based and easily readable and tweakable. A recipe is
 a folder containing text files: version, sources, checksums, depends,
@@ -29,8 +33,7 @@ the chytrans tool. Void's maintainers do the packaging; a nightly sync
 snapshots their templates, translates the set, and pushes what builds.
 Fixes go into the translator; recipe PRs against chy-recipes get closed.
 
-There is a one-page overview in docs/index.html.
+Full overview at [alperien.github.io/chy](https://alperien.github.io/chy),
+inspired by [kiss](https://github.com/kisslinux/kiss).
 
-All contributions are welcome.
-
-MIT
+Contributions welcome. MIT.
