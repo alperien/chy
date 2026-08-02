@@ -1,4 +1,4 @@
-<img src="docs/logo.png" alt="chy" width="156">
+<img src="docs/logo.svg" alt="chy" width="156">
 
 chy is a byte-sized, portable, source-based package manager written in
 POSIX shell. 1.6k lines of pretty shell with no dependencies.
