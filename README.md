@@ -1,7 +1,5 @@
 <p align="center"><img src="docs/logo.png" alt="chy" width="150"></p>
 
-![chy install freetype](docs/chy-install.png)
-
 Everything lives under $CHY_ROOT, ~/.chy by default. Packages get built
 into store/ and get linked into a usr/ symlink farm. chy lives in
 userland and won't write outside its root, so deleting the folder is
