@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chy</title>
+<meta name="description" content="chy is a byte-sized, portable, source-based package manager written in POSIX shell. 1.6k lines of pretty shell with no dependencies.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%20shape-rendering%3D%22crispEdges%22%20role%3D%22img%22%20aria-label%3D%22chy%22%3E%0A%3Ctitle%3Echy%3C/title%3E%0A%3Crect%20width%3D%2264%22%20height%3D%2264%22%20fill%3D%22%232b2224%22/%3E%0A%3Cg%20fill%3D%22%23c22e48%22%3E%0A%3Crect%20x%3D%2214%22%20y%3D%2219%22%20width%3D%221%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2214%22%20y%3D%2220%22%20width%3D%221%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2213%22%20y%3D%2221%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2211%22%20y%3D%2222%22%20width%3D%227%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2213%22%20y%3D%2223%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2223%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2214%22%20y%3D%2224%22%20width%3D%221%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2224%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2214%22%20y%3D%2225%22%20width%3D%221%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2227%22%20y%3D%2225%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2227%22%20y%3D%2226%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2220%22%20y%3D%2227%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2227%22%20y%3D%2227%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2238%22%20y%3D%2227%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2245%22%20y%3D%2227%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2219%22%20y%3D%2228%22%20width%3D%226%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2227%22%20y%3D%2228%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2238%22%20y%3D%2228%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2245%22%20y%3D%2228%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2218%22%20y%3D%2229%22%20width%3D%228%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2227%22%20y%3D%2229%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2238%22%20y%3D%2229%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2244%22%20y%3D%2229%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2230%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2223%22%20y%3D%2230%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2227%22%20y%3D%2230%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2231%22%20y%3D%2230%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2238%22%20y%3D%2230%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2244%22%20y%3D%2230%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2231%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2227%22%20y%3D%2231%22%20width%3D%229%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2238%22%20y%3D%2231%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2243%22%20y%3D%2231%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2232%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2232%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2233%22%20y%3D%2232%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2238%22%20y%3D%2232%22%20width%3D%228%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2233%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2233%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2234%22%20y%3D%2233%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2239%22%20y%3D%2233%22%20width%3D%227%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2234%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2224%22%20y%3D%2234%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2234%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2234%22%20y%3D%2234%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2240%22%20y%3D%2234%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2244%22%20y%3D%2234%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2235%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2224%22%20y%3D%2235%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2235%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2234%22%20y%3D%2235%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2244%22%20y%3D%2235%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2236%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2223%22%20y%3D%2236%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2236%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2234%22%20y%3D%2236%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2244%22%20y%3D%2236%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2217%22%20y%3D%2237%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2222%22%20y%3D%2237%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2237%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2234%22%20y%3D%2237%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2243%22%20y%3D%2237%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2218%22%20y%3D%2238%22%20width%3D%227%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2238%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2234%22%20y%3D%2238%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2242%22%20y%3D%2238%22%20width%3D%224%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2219%22%20y%3D%2239%22%20width%3D%225%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2228%22%20y%3D%2239%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2234%22%20y%3D%2239%22%20width%3D%222%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2240%22%20y%3D%2239%22%20width%3D%225%22%20height%3D%221%22/%3E%0A%3Crect%20x%3D%2240%22%20y%3D%2240%22%20width%3D%223%22%20height%3D%221%22/%3E%0A%3C/g%3E%0A%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:wght@400;700&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+body{max-width:72ch;margin:16px auto;padding:0 5% 4em;font:17px/1.55 'STIX Two Text',Georgia,'Times New Roman',serif;background:#f3ece3;color:#2b2224}
+h2{font-size:1.05em;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:2.4em 0 .7em}
+p{margin:.7em 0 .7em 2.5ch}
+pre{margin:1.1em 0 1.1em 5ch;font:15px/1.5 'Courier Prime',Courier,monospace;overflow-x:auto}
+a{color:#c22e48}
+a:hover{background:#c22e48;color:#f3ece3;text-decoration:none}
+::selection{background:#c22e48;color:#f3ece3}
+.logo{width:84px;height:auto;aspect-ratio:39/25;color:#c22e48;display:block;margin:1.4em 0 1.8em}
+@media(max-width:600px){p{margin-left:0}pre{margin-left:1ch}}
+@media(prefers-color-scheme:dark){body{background:#2b2224;color:#f3ece3}a{color:#e0607a}a:hover{background:#e0607a;color:#2b2224}}
+</style>
+</head>
+<body>
+
+<svg class="logo" role="img" aria-label="chy" viewBox="10 17 39 25"><g fill="currentColor"><rect x="14" y="19" width="1" height="1"/><rect x="14" y="20" width="1" height="1"/><rect x="13" y="21" width="3" height="1"/><rect x="11" y="22" width="7" height="1"/><rect x="13" y="23" width="3" height="1"/><rect x="28" y="23" width="2" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="28" y="24" width="2" height="1"/><rect x="14" y="25" width="1" height="1"/><rect x="27" y="25" width="3" height="1"/><rect x="27" y="26" width="3" height="1"/><rect x="20" y="27" width="4" height="1"/><rect x="27" y="27" width="2" height="1"/><rect x="38" y="27" width="2" height="1"/><rect x="45" y="27" width="2" height="1"/><rect x="19" y="28" width="6" height="1"/><rect x="27" y="28" width="2" height="1"/><rect x="38" y="28" width="2" height="1"/><rect x="45" y="28" width="2" height="1"/><rect x="18" y="29" width="8" height="1"/><rect x="27" y="29" width="2" height="1"/><rect x="38" y="29" width="2" height="1"/><rect x="44" y="29" width="3" height="1"/><rect x="17" y="30" width="4" height="1"/><rect x="23" y="30" width="3" height="1"/><rect x="27" y="30" width="3" height="1"/><rect x="31" y="30" width="4" height="1"/><rect x="38" y="30" width="2" height="1"/><rect x="44" y="30" width="3" height="1"/><rect x="17" y="31" width="3" height="1"/><rect x="27" y="31" width="9" height="1"/><rect x="38" y="31" width="3" height="1"/><rect x="43" y="31" width="4" height="1"/><rect x="17" y="32" width="2" height="1"/><rect x="28" y="32" width="4" height="1"/><rect x="33" y="32" width="3" height="1"/><rect x="38" y="32" width="8" height="1"/><rect x="17" y="33" width="2" height="1"/><rect x="28" y="33" width="4" height="1"/><rect x="34" y="33" width="2" height="1"/><rect x="39" y="33" width="7" height="1"/><rect x="17" y="34" width="2" height="1"/><rect x="24" y="34" width="2" height="1"/><rect x="28" y="34" width="3" height="1"/><rect x="34" y="34" width="2" height="1"/><rect x="40" y="34" width="3" height="1"/><rect x="44" y="34" width="2" height="1"/><rect x="17" y="35" width="2" height="1"/><rect x="24" y="35" width="2" height="1"/><rect x="28" y="35" width="3" height="1"/><rect x="34" y="35" width="2" height="1"/><rect x="44" y="35" width="2" height="1"/><rect x="17" y="36" width="3" height="1"/><rect x="23" y="36" width="3" height="1"/><rect x="28" y="36" width="2" height="1"/><rect x="34" y="36" width="2" height="1"/><rect x="44" y="36" width="2" height="1"/><rect x="17" y="37" width="4" height="1"/><rect x="22" y="37" width="4" height="1"/><rect x="28" y="37" width="2" height="1"/><rect x="34" y="37" width="2" height="1"/><rect x="43" y="37" width="3" height="1"/><rect x="18" y="38" width="7" height="1"/><rect x="28" y="38" width="2" height="1"/><rect x="34" y="38" width="2" height="1"/><rect x="42" y="38" width="4" height="1"/><rect x="19" y="39" width="5" height="1"/><rect x="28" y="39" width="2" height="1"/><rect x="34" y="39" width="2" height="1"/><rect x="40" y="39" width="5" height="1"/><rect x="40" y="40" width="3" height="1"/></g></svg>
+
+<p>chy is a byte-sized, portable, source-based package manager written in
+POSIX shell. 1.6k lines of pretty shell with no dependencies.</p>
+
+<p>Packages are recipe based and easily tweakable.</p>
+
+<p>Everything lives under $CHY_ROOT, ~/.chy by default. chy builds each
+package into store/ and links it into a usr/ symlink farm. State is
+plain files. Nothing runs as a daemon and no step needs privilege.
+chy never writes outside its root, so deleting that directory removes
+everything it has built. Running chy with no arguments prints the
+verb list.</p>
+
+<p>A farm with three packages:</p>
+
+<pre>
+$CHY_ROOT/
+├── recipes -> ~/chy/chy-recipes/recipes
+├── overlay/
+├── store/
+│   ├── zlib-1.3/
+│   ├── libpng-1.6/
+│   └── freetype-2.13/     each package is its own prefix
+└── usr/
+    └── bin/               symlinks back into store/
+</pre>
+
+<h2>Getting Started</h2>
+
+<pre>
+git clone https://github.com/alperien/chy && cd chy
+git clone https://github.com/alperien/chy-recipes
+export CHY_ROOT=$HOME/.chy PATH="$HOME/.chy/usr/bin:$PATH"
+mkdir -p "$CHY_ROOT" && ln -s "$PWD/chy-recipes/recipes" "$CHY_ROOT/recipes"
+cp chy-recipes/shlibs.map "$CHY_ROOT/shlibs.map"
+sh chy/chy install freetype
+</pre>
+
+<h2>Recipes</h2>
+
+<p>A recipe is a directory of plain files: version, sources, checksums,
+depends, makedepends, a build script, and patches/. To change a
+package, copy its recipe to $CHY_ROOT/overlay/&lt;name&gt; and edit it
+there; chy reads the overlay first. chytrans (translator/) generates
+every recipe from <a href="https://github.com/void-linux/void-packages" target="_blank" rel="noopener noreferrer">Void Linux</a>'s templates, so the recipe set tracks
+upstream. Fixes go into the translator, and pull requests that edit
+recipes/ get closed.</p>
+
+<p>The whole recipe set, the Firefox runtime spine over an X11-provided
+host (30/07/2026):</p>
+
+<pre>
+zlib bzip2 xz zstd libffi expat pcre2 glib libpng freetype harfbuzz
+fontconfig pixman cairo pango gdk-pixbuf libepoxy at-spi2-core gtk+3
+dbus
+</pre>
+
+<p>firefox is a binary exception, seeded by hand, so it is not listed.</p>
+
+<h2>Further Reading</h2>
+
+<pre>
+git ......... <a href="https://github.com/alperien/chy" target="_blank" rel="noopener noreferrer">github.com/alperien/chy</a>
+kiss ........ <a href="https://github.com/kisslinux/kiss" target="_blank" rel="noopener noreferrer">github.com/kisslinux/kiss</a>      (the inspiration)
+upstream .... <a href="https://github.com/void-linux/void-packages" target="_blank" rel="noopener noreferrer">github.com/void-linux/void-packages</a>
+license ..... <a href="https://github.com/alperien/chy/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
+</pre>
+
+</body>
+</html>
