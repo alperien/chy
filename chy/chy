@@ -204,10 +204,19 @@ recipe_check() { # recipe_check <name>
     [ "$rc_nsrc" -eq "$rc_nsum" ] ||
         fail "$1" "sources/checksums line counts differ ($rc_nsrc vs $rc_nsum)"
 
-    sig_lines "$R_DIR/checksums" | while IFS= read -r rc_line; do
-        valid_sha256 "$(first_field "$rc_line")" || exit 1
-    done || fail "$1" "checksums must be lowercase sha256 hex digests"
-    # FIXME: names the recipe but not which checksums line is bad
+    # Every checksums line has to be a bare lowercase sha256 digest;
+    # the failing line's ordinal names itself.
+    rc_bad=$(rc_ln=0; sig_lines "$R_DIR/checksums" | while IFS= read -r rc_line; do
+        rc_ln=$((rc_ln + 1))
+        valid_sha256 "$(first_field "$rc_line")" || {
+            printf '%s\n' "$rc_ln"
+            exit 1
+        }
+    done) || : # the printed ordinal is the signal, not the exit status
+    case $rc_bad in
+        '') ;;
+        *) fail "$1" "checksums line $rc_bad must be a lowercase sha256 hex digest" ;;
+    esac
 
     # Every source line needs a filename; no two lines can share one.
     sig_lines "$R_DIR/sources" | while IFS= read -r rc_line; do
@@ -1119,7 +1128,15 @@ check_min_chy() {
     [ -f "$mc_f" ] || return 0
     mc_want=$(head -n 1 "$mc_f")
     mc_want=${mc_want%"$CR"}
-    case $mc_want in ''|*[!0-9.]*) return 0 ;; esac
+    # Fail closed: an unreadable or malformed marker means this chy
+    # can't know whether it reads the repo's contract, so it refuses.
+    # A silent skip here is exactly the old-repo misread the gate
+    # exists to prevent.
+    case $mc_want in
+        ''|*[!0-9.]*)
+            printf 'chy: error: malformed min-chy: %s\n' "${mc_want:-(empty)}" >&2
+            exit 1 ;;
+    esac
     mc_newer=$(printf '%s\n%s\n' "$mc_want" "$CHY_VERSION" \
         | LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
     [ "$mc_newer" = "$CHY_VERSION" ] || {
