@@ -308,7 +308,10 @@ assert o in data, 'template lost its NEEDED string'
 open(dst, 'wb').write(data.replace(o, n))
 PYEOF
     chmod 755 "$1"
-    ldd "$1" 2>/dev/null | grep -F -- "$2" | grep -Eq 'not found|Error loading shared library' \
+    # musl's ldd reports missing libraries on stderr; read both streams
+    # and accept either loader's phrasing (glibc "not found", musl
+    # "Error loading shared library").
+    ldd "$1" 2>&1 | grep -F -- "$2" | grep -Eq 'not found|Error loading shared library' \
         || fail "host ldd does not report $2 as not found in $1"
 }
 

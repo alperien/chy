@@ -22,7 +22,7 @@ elf_template_init || { echo 'SKIP: no patchable dynamic ELF on this host'; exit 
 real_lib=$(ldd "$ELF_TEMPLATE" 2>/dev/null |
     LC_ALL=C awk -v s="$ELF_SONAME" '$1 == s && $2 == "=>" { print $3; exit }')
 [ -f "$real_lib" ] || fail "cannot locate the template library for $ELF_SONAME"
-if ldd "$real_lib" 2>/dev/null | grep -q 'not found'; then
+if ldd "$real_lib" 2>&1 | grep -Eq 'not found|Error loading shared library'; then
     echo 'SKIP: the template library does not resolve cleanly on this host'
     exit 0
 fi
@@ -42,7 +42,8 @@ assert o in data, 'template lost its NEEDED string'
 open(dst, 'wb').write(data.replace(o, n.ljust(len(o), b'\0')))
 PYEOF
     chmod 755 "$1"
-    ldd "$1" 2>/dev/null | grep -F -- "$2" | grep -q 'not found'
+    # stderr, not stdout: musl's ldd reports missing libraries there
+    ldd "$1" 2>&1 | grep -F -- "$2" | grep -q 'not found'
 }
 
 if ! mk_named_elf "$TMPD/app-needs-1" libfake.so.1 ||

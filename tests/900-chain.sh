@@ -65,7 +65,7 @@ fi
 # freetype's library must resolve every NEEDED soname (brotli/bz2/png/z)
 # through the farm + host, nothing dark.
 if command -v ldd >/dev/null 2>&1; then
-    missing=$(ldd "$CHY_ROOT/usr/lib/libfreetype.so" 2>/dev/null | grep 'not found' || :)
+    missing=$(ldd "$CHY_ROOT/usr/lib/libfreetype.so" 2>&1 | grep -E 'not found|Error loading shared library' || :)
     [ -n "$missing" ] && { echo "unresolved:"; echo "$missing"; exit 1; }
 fi
 
