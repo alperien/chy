@@ -36,7 +36,7 @@ snap0=$(snap "$CHY_ROOT")
 run_chy install zsum
 assert_rc 1 'non-hex digest fails the install'
 file_has_line "$ERR" \
-    'chy: zsum: error: checksums must be lowercase sha256 hex digests'
+    'chy: zsum: error: checksums line 1 must be a lowercase sha256 hex digest'
 assert_absent "$CHY_ROOT/cache/trap-zsum.txt"
 assert_not_installed "$CHY_ROOT" zsum
 assert_no_store "$CHY_ROOT" zsum 1.0
