@@ -19,6 +19,14 @@
 #   * no process substitution anywhere (/dev/fd may be absent; the spike hit
 #     this); temp files and pure-bash set diffs instead.
 #
+# Boundary note: everything above is hardening against accidental or
+# sloppy templates, NOT a security boundary -- this script `source`s
+# untrusted bash with bash itself as the interpreter, and a determined
+# template can escape any in-process stub scheme. The actual trust
+# boundary is the disposable container: evaluation only ever runs
+# inside a throwaway CI container (see .github/workflows/repo-sync.yml,
+# build gate), never against a host worth keeping. Keep it that way.
+#
 # Usage: bash translator/evaluate.sh <srcpkg-dir> <dump-out-dir>
 #
 #   <srcpkg-dir>     contains `template` (+ patches/, files/, not read here)
