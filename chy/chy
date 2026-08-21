@@ -730,7 +730,8 @@ commit_db() { # commit_db <name>: publish the staged entry atomically
 # runtime verification
 # The ELF scan: each ELF under $1 is run through ldd with $CHY_ROOT/usr/lib on
 # LD_LIBRARY_PATH, so it sees what a launched program would. Output: the
-# distinct unresolved sonames (ldd's "=> not found"), byte-sorted, each with
+# distinct unresolved sonames (glibc ldd's "=> not found", musl's
+# "Error loading shared library"), byte-sorted, each with
 # shlib_hint appended.
 
 ELF_MAGIC=$(printf '\177ELF')
@@ -760,8 +761,19 @@ scan_needs() { # scan_needs <store entry dir>
             ldd "$sn_f" 2>&1 || :
     done | LC_ALL=C awk '
         $2 == "=>" && $3 == "not" && $4 == "found" { print $1 }
+        # musl phrases the same miss differently and never prints the
+        # glibc forms: "Error loading shared library <path>: No such
+        # file or directory (needed by ...)"; the soname is the
+        # basename of that path, with the trailing colon stripped.
+        $1 == "Error" && $2 == "loading" && $3 == "shared" && $4 == "library" {
+            mp = $5
+            sub(/:.*/, "", mp)
+            nseg = split(mp, seg, "/")
+            print seg[nseg]
+            next
+        }
         # an annoying edge case: a candidate that exists but is not a loadable
-        # ELF makes the loader abort instead of printing "=> not found"; recover the
+        # ELF makes the glibc loader abort instead of printing "=> not found"; recover the
         # offending soname from that message so it is not silently lost.
         /: error while loading shared libraries: / {
             elp = $0
