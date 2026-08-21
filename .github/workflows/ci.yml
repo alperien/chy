@@ -47,6 +47,23 @@ jobs:
       - name: run the suite
         run: sh ./test
 
+  musl:
+    name: test suite (Void musl)
+    # The portability claim says POSIX, not glibc: this leg keeps the
+    # suite honest on a musl/busybox userland, where ldd output shapes
+    # and tool behaviors can drift from the glibc CI leg unnoticed.
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/void-linux/void-musl-full:latest
+    steps:
+      - name: prepare container
+        run: xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 brotli brotli-devel bash || { xbps-install -Syu xbps && xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 brotli brotli-devel bash; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: run the suite
+        run: sh ./test
+
   acceptance:
     name: default repo acceptance (gtk+3 -> firefox)
     if: github.event_name == 'workflow_dispatch'
