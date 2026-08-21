@@ -1,0 +1,9 @@
+# Everything in this repo is shell, recipes, and text fixtures:
+# normalize to LF on checkin and force LF on checkout everywhere,
+# so a Windows clone never CRLF-ifies scripts into unrunnable noise.
+* text=auto eol=lf
+# Binary fixtures stay untouched.
+*.png binary
+*.gz binary
+*.xz binary
+*.zst binary
