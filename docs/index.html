@@ -62,6 +62,8 @@ git clone https://github.com/alperien/chy-recipes
 export CHY_ROOT=$HOME/.chy PATH="$HOME/.chy/usr/bin:$PATH"
 mkdir -p "$CHY_ROOT" && ln -s "$PWD/chy-recipes/recipes" "$CHY_ROOT/recipes"
 cp chy-recipes/shlibs.map "$CHY_ROOT/shlibs.map"
+mkdir -p "$CHY_ROOT/db"
+awk 'NF {print $1}' chy-recipes/provided.suggested | sort -u &gt; "$CHY_ROOT/db/provided"
 sh chy/chy install freetype
 </pre>
 
@@ -79,7 +81,10 @@ $CHY_ROOT/overlay/&lt;name&gt;, which chy reads before the repo.</p>
 chytrans tool. All fixes go in the translator, and PRs that edit
 recipes/ get closed.</p>
 
-<p>The default recipe repo (684 packages) (02/08/2026), the core set:</p>
+<p>The db/provided file lists names the host system already supplies,
+so chy skips building recipes that would duplicate them.</p>
+
+<p>The default recipe repo covers a core set:</p>
 
 <pre>
 zlib bzip2 xz zstd libffi expat pcre2 glib libpng freetype harfbuzz

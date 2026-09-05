@@ -16,7 +16,13 @@ of all options.
     export CHY_ROOT=$HOME/.chy PATH="$HOME/.chy/usr/bin:$PATH"
     mkdir -p "$CHY_ROOT" && ln -s "$PWD/chy-recipes/recipes" "$CHY_ROOT/recipes"
     cp chy-recipes/shlibs.map "$CHY_ROOT/shlibs.map"
+    mkdir -p "$CHY_ROOT/db"
+    awk 'NF {print $1}' chy-recipes/provided.suggested | sort -u > "$CHY_ROOT/db/provided"
     sh chy/chy install freetype
+
+    the db/provided file lists library and tool names the host system
+    already supplies, so chy skips building recipes that would only
+    duplicate them.
 
 ##
 
