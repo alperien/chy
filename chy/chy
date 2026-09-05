@@ -311,6 +311,10 @@ fetch_source() { # fetch_source <name> <sha256> <source line>
             fs_rest=${fs_rest#*[[:space:]]}
         fi
         [ -n "$fs_url" ] || continue
+        # A kiss dest field is a work-dir path, not a mirror URL: the
+        # mirror walk ends at it (fetching it would blame the recipe for
+        # a path the network can never serve).
+        case $fs_url in /*|./*) break ;; esac
         if fetch_url "$1" "$fs_url" "$fs_cache"; then
             fs_any=1 fs_got=$(sha_of "$fs_cache")
             [ "$fs_got" = "$2" ] && return 0
@@ -438,7 +442,29 @@ prepare_build() { # prepare_build <name>
     pb_first=1
     while IFS= read -r pb_line; do
         pb_file=$(first_field "$pb_line")
+        pb_dest=
+        { read -r _pb_url pb_dest _ <<EOF
+$pb_line
+EOF
+        } || :
         pb_file=${pb_file##*/}
+        # kiss source lines carry a destination PATH in field 2 (extract
+        # or copy into that work-dir subdir); chy's treat field 2+ as
+        # mirrors. A leading / or ./ is unambiguous: no URL starts that
+        # way, so it can only be a kiss dest.
+        case $pb_dest in
+            /*|./*)
+                case /$pb_dest/ in
+                    */../*) fail "$1" "unsafe source destination: $pb_dest" ;;
+                esac
+                pb_dir=$WORK/${pb_dest#./}
+                mkdir -p "$pb_dir" || fail "$1" "cannot create $pb_dir"
+                stage_source "$1" "$pb_file" "$pb_dir"
+                # A dest source never hoists: its contents belong under
+                # the named subdir, and hoisting would empty it out.
+                pb_first=0
+                continue ;;
+        esac
         stage_source "$1" "$pb_file" "$WORK"
         if [ "$pb_first" -eq 1 ] && is_archive "$pb_file"; then
             hoist "$WORK" || fail "$1" "cannot hoist $pb_file"
