@@ -988,7 +988,10 @@ unlink_links() { # unlink_links <name>
 }
 
 # Installed packages whose db-recorded depends name $1 (makedepends
-# never guard). $1 itself and the exempt set don't count. Output:
+# never guard). $1 itself and the exempt set don't count. A `a|b`
+# alternative line is read conservatively as requiring BOTH names: the
+# db can't know which alternative satisfied the install, and a removal
+# guard that guesses wrong deletes a package still in use. Output:
 # byte-sorted, space-separated, trailing space if any.
 requirers_of() { # requirers_of <name> <exempt-set>
     for ro_d in "$CHY_ROOT/db/installed/"*; do
@@ -996,7 +999,10 @@ requirers_of() { # requirers_of <name> <exempt-set>
         ro_p=${ro_d##*/}
         [ "$ro_p" = "$1" ] && continue
         in_set "$ro_p" "$2" && continue
-        if list_names "$ro_d/depends" | grep -Fqx "$1"; then
+        if list_names "$ro_d/depends" |
+            LC_ALL=C awk -F'|' -v t="$1" '{
+                for (i = 1; i <= NF; i++) if ($i == t) { found = 1; exit }
+            } END { exit !found }'; then
             printf '%s\n' "$ro_p"
         fi
     done | LC_ALL=C sort | tr '\n' ' '
@@ -1096,6 +1102,31 @@ do_install() { # do_install <name> <requested: 1|0>
     added "$1" "$R_VER" "$R_REV"
 }
 
+# One dependency token to the single name it resolves to. A plain name
+# passes through. `a|b` (kiss alternatives) is satisfied by ANY installed
+# or provided alternative — that one is chosen; else the FIRST alternative
+# with a recipe is chosen and needs building. Exit 2: an alternative is
+# not a valid name. Exit 3: no alternative is installed, provided, or
+# buildable.
+dep_choose() { # dep_choose <token> <provided-set>
+    dc_rest=$1 dc_sat='' dc_rec=''
+    while [ -n "$dc_rest" ]; do
+        case $dc_rest in
+            *'|'*) dc_a=${dc_rest%%|*} dc_rest=${dc_rest#*|} ;;
+            *)     dc_a=$dc_rest dc_rest= ;;
+        esac
+        valid_name "$dc_a" || return 2
+        if [ -z "$dc_sat" ] &&
+            { [ -d "$CHY_ROOT/db/installed/$dc_a" ] || in_set "$dc_a" "$2"; }; then
+            dc_sat=$dc_a
+        fi
+        [ -n "$dc_rec" ] || { [ -d "$(recipe_dir "$dc_a")" ] && dc_rec=$dc_a; }
+    done
+    if [ -n "$dc_sat" ]; then printf '%s\n' "$dc_sat"; return 0; fi
+    if [ -n "$dc_rec" ]; then printf '%s\n' "$dc_rec"; return 0; fi
+    return 3
+}
+
 # resolver
 # install resolution, steps 2-5, in build/resolve (finished before any pipeline
 # step wipes build/). Step 2 walks depends+makedepends from the requested
@@ -1122,6 +1153,16 @@ resolve() { # resolve <space-separated requested names>; sets ORDER
         { list_names "$rv_dir/depends"
           list_names "$rv_dir/makedepends"; } >"$RES/deps"
         while IFS= read -r rv_d <&3; do
+            # `a|b` alternatives: pick the satisfied alternative, else the
+            # first buildable one; the edge records the chosen name.
+            case $rv_d in
+                *'|'*)
+                    rv_ch=$(dep_choose "$rv_d" "$PROVIDED") || case $? in
+                        2) fail "$rv_cur" "invalid dependency name: $rv_d" ;;
+                        *) fail "$rv_cur" "needs $rv_d: no alternative is installed, provided, or has a recipe" ;;
+                    esac
+                    rv_d=$rv_ch ;;
+            esac
             valid_name "$rv_d" || fail "$rv_cur" "invalid dependency name: $rv_d"
             printf '%s %s\n' "$rv_cur" "$rv_d" >>"$RES/edges"
             in_set "$rv_d" "$rv_seen" && continue
