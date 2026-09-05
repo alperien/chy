@@ -521,7 +521,7 @@ run_build() { # run_build <name>
         printf '%s' "$?" >"$rb_rc"
     ) 2>&1 | tee "$rb_log"
     rb_status=
-    [ -f "$rb_rc" ] && rb_status=$(cat "$rb_rc") || :
+    if [ -f "$rb_rc" ]; then rb_status=$(cat "$rb_rc"); fi
     case $rb_status in
         0) return 0 ;;
         # No readable status means the subshell died before the build

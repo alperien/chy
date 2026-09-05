@@ -77,8 +77,6 @@ file_has "$ERR" 'invalid dependency name: ok|bad/name'
 mkpkg "$CHY_ROOT" g_a 1.0 usr/bin/g_a-tool
 mkpkg "$CHY_ROOT" g_b 1.0 usr/bin/g_b-tool
 mkpkg "$CHY_ROOT" g_user 1.0 usr/bin/g_user-tool
-printf 'set -eu\nmkdir -p "$1$CHY_ROOT/usr/bin"\nprintf x >"$1$CHY_ROOT/usr/bin/g_user-tool"\n' \
-    >"$CHY_ROOT/recipes/g_user/build"
 run_chy install g_a g_b
 assert_rc 0 'both alternatives install'
 # record g_user with a db depends line `g_a|g_b` (as if installed when
