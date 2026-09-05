@@ -43,12 +43,14 @@ mkdir -p "$TMPD/web"
 printf 'wf payload\n' >"$TMPD/web/wf-src.txt"
 cat >"$bin/wget" <<EOF
 #!/bin/sh
-[ "\$#" -eq 4 ] || exit 2
-[ "\$1" = -O ] || exit 2
-[ "\$3" = -- ] || exit 2
-printf '%s\n' "\$4" >>"$TMPD/wget.log"
-case \$4 in
-    file://*) exec cp "\${4#file://}" "\$2" ;;
+# the documented invocation: wget -T 30 -t 3 -O <out> -- <url>
+[ "\$#" -eq 8 ] || exit 2
+[ "\$1" = -T ] && [ "\$2" = 30 ] && [ "\$3" = -t ] && [ "\$4" = 3 ] || exit 2
+[ "\$5" = -O ] || exit 2
+[ "\$7" = -- ] || exit 2
+printf '%s\n' "\$8" >>"$TMPD/wget.log"
+case \$8 in
+    file://*) exec cp "\${8#file://}" "\$6" ;;
     *) exit 4 ;;
 esac
 EOF

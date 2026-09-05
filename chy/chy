@@ -99,6 +99,35 @@ require() { # require <name> <tool>
     command -v "$2" >/dev/null 2>&1 || fail "$1" "missing tool: $2"
 }
 
+# Concurrency lock.
+# Mutating verbs share $CHY_ROOT/build scratch and the commit sequence, so
+# two simultaneous runs corrupt each other. mkdir is atomic on every POSIX
+# filesystem, so it is the lock; the holder writes its pid inside so a
+# would-be holder can tell a live run from a crashed one. The trap releases
+# on any exit path, including fail().
+acquire_lock() {
+    mkdir -p "$CHY_ROOT" ||
+        { printf 'chy: error: cannot create %s\n' "$CHY_ROOT" >&2; exit 1; }
+    if ! mkdir "$CHY_ROOT/.lock" 2>/dev/null; then
+        al_pid=$(cat "$CHY_ROOT/.lock/pid" 2>/dev/null) || al_pid=
+        case $al_pid in ''|*[!0-9]*) al_pid= ;; esac
+        if [ -n "$al_pid" ] && kill -0 "$al_pid" 2>/dev/null; then
+            printf 'chy: error: another chy is running (pid %s)\n' "$al_pid" >&2
+            exit 1
+        fi
+        # Dead (or unreadable) holder: steal. The re-mkdir is still racy
+        # against a second stealer, and mkdir's atomicity resolves it: the
+        # loser refuses rather than sharing the scratch.
+        rm -rf "$CHY_ROOT/.lock"
+        mkdir "$CHY_ROOT/.lock" 2>/dev/null || {
+            printf 'chy: error: cannot take the lock (race)\n' >&2
+            exit 1
+        }
+    fi
+    printf '%s\n' "$$" >"$CHY_ROOT/.lock/pid"
+    trap 'rm -rf "$CHY_ROOT/.lock"' EXIT
+}
+
 # Significant lines of a list-valued recipe file: skip blanks and '#'
 # comments. The test runs on the whitespace-trimmed line, so an indented '#'
 # is a comment too and an all-whitespace line is blank.
@@ -246,10 +275,14 @@ read_version() { # read_version <file>
 
 # fetch
 fetch_url() { # fetch_url <name> <url> <outfile>
+    # Timeouts and retries: a hung connection must not wedge an install
+    # forever, and a transient failure should retry before the mirror
+    # fallback is reached. The `--` URL guard stays: a hostile URL must
+    # never parse as flags.
     if command -v curl >/dev/null 2>&1; then
-        curl -fL -o "$3" -- "$2"
+        curl -fL --retry 3 --connect-timeout 10 --max-time 600 -o "$3" -- "$2"
     elif command -v wget >/dev/null 2>&1; then
-        wget -O "$3" -- "$2"
+        wget -T 30 -t 3 -O "$3" -- "$2"
     else
         fail "$1" 'missing tool: curl or wget'
     fi
@@ -1692,9 +1725,9 @@ main() {
         version)      shift; [ "$#" -eq 0 ] || { usage >&2; exit 2; }
                       printf '%s\n' "$CHY_VERSION" ;;
         ''|-h|--help) usage ;;
-        install)      shift; cmd_install "$@" ;;
-        upgrade)      shift; cmd_upgrade "$@" ;;
-        remove)       shift; cmd_remove "$@" ;;
+        install)      shift; acquire_lock; cmd_install "$@" ;;
+        upgrade)      shift; acquire_lock; cmd_upgrade "$@" ;;
+        remove)       shift; acquire_lock; cmd_remove "$@" ;;
         list)         shift; cmd_list "$@" ;;
         outdated)     shift; cmd_outdated "$@" ;;
         why)          shift; cmd_why "$@" ;;
