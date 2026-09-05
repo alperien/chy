@@ -276,7 +276,9 @@ done
     done <<<"$(declare -F)"
 
     cd "$SANDBOX2" || exit 97
-    # isolation, as in pass 1 (the staging below is builtins plus $MKDIR)
+    # isolation, as in pass 1 (the staging below is builtins plus $MKDIR).
+    # Parity audited: both passes set readonly PATH=$NOPATH before source
+    # (pass 1 above, pass 2 here); no third source site exists.
     readonly PATH="$NOPATH"
     # shellcheck source=/dev/null
     if ! source "$TEMPLATE" >/dev/null 2>"$WORKDIR/p2.err"; then
