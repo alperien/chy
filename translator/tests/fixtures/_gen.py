@@ -1468,6 +1468,39 @@ def verify(root):
     return probs
 
 
+def case_45_dropped_loud():
+    # conf_files and system_accounts have no chy concept: the package
+    # still translates, the meta ledger keeps its bare `dropped: <key>`
+    # lines, and the run report names WHAT was dropped
+    # (`dropped: <name>: <key>: <value>`), with a stderr warning in
+    # chytrans' warning grammar.  A package with neither key stays
+    # silent.
+    c = Case("45-dropped-loud")
+    c.names("daemon", "plain")
+    c.template("daemon", tmpl("daemon", lines=[
+        'conf_files="/etc/daemon/daemon.conf /etc/daemon/extra.conf"',
+        'system_accounts="daemon:44 _daemon"',
+    ]))
+    c.template("plain", tmpl("plain"))
+    c.slice(E("daemon"), E("plain"))
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: report :: translated: daemon\n"
+        "file-line :: report"
+        " :: dropped: daemon: conf_files:"
+        " /etc/daemon/daemon.conf /etc/daemon/extra.conf\n"
+        "file-line :: report :: dropped: daemon: system_accounts:"
+        " daemon:44 _daemon\n"
+        "file-line :: report :: translated: plain\n"
+        "file-not-has :: report :: dropped: plain\n"
+        "file-matches :: recipes/daemon/meta :: ^dropped: conf_files$\n"
+        "file-matches :: recipes/daemon/meta"
+        " :: ^dropped: system_accounts$\n"
+        "stderr-matches :: ^chytrans: warning: daemon: dropped conf_files\n"
+    )
+    c.finish()
+
+
 def main():
     fns = [fn for nm, fn in sorted(globals().items())
            if nm.startswith("case_") and callable(fn)]

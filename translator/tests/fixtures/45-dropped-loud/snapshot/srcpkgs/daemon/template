@@ -1,0 +1,13 @@
+# Template file for 'daemon'
+pkgname=daemon
+version=1.0
+revision=1
+build_style=gnu-configure
+conf_files="/etc/daemon/daemon.conf /etc/daemon/extra.conf"
+system_accounts="daemon:44 _daemon"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/daemon"
+distfiles="https://example.org/dist/daemon-${version}.tar.gz"
+checksum=20ca5aa21eca18b43c51a296ee993acebc5636092b04d813d5acae4792047308

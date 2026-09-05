@@ -2,12 +2,16 @@ translated: at-spi2-core
 exception: bzip2
 translated: cairo
 translated: dbus
+dropped: dbus: conf_files: /etc/dbus-1/*.conf
+dropped: dbus: system_accounts: dbus:22
 translated: expat
 translated: fontconfig
+dropped: fontconfig: conf_files: /etc/fonts/fonts.conf
 translated: freetype
 translated: gdk-pixbuf
 translated: glib
 translated: gtk+3
+dropped: gtk+3: conf_files: /etc/gtk-3.0/im-multipress.conf
 translated: harfbuzz
 translated: libepoxy
 translated: libffi

@@ -1,0 +1,9 @@
+exit :: 0
+file-line :: report :: translated: daemon
+file-line :: report :: dropped: daemon: conf_files: /etc/daemon/daemon.conf /etc/daemon/extra.conf
+file-line :: report :: dropped: daemon: system_accounts: daemon:44 _daemon
+file-line :: report :: translated: plain
+file-not-has :: report :: dropped: plain
+file-matches :: recipes/daemon/meta :: ^dropped: conf_files$
+file-matches :: recipes/daemon/meta :: ^dropped: system_accounts$
+stderr-matches :: ^chytrans: warning: daemon: dropped conf_files
