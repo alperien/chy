@@ -17,8 +17,8 @@ t_init
 # only the pinned runtime-verification warning, never a failure)
 bin="$TMPD/bin"
 mkdir -p "$bin"
-for t in sh awk cat cp find grep head ln mkdir mv readlink rm rmdir \
-    sed sha256sum sort tr uniq wc; do
+for t in sh awk cat cp date find grep head ln mkdir mv readlink rm rmdir \
+    sed sha256sum sort tee tr uniq wc; do
     p=$(command -v "$t") || { echo "SKIP: host lacks $t"; exit 0; }
     ln -s "$p" "$bin/$t"
 done

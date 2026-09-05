@@ -119,17 +119,17 @@ count_matches() { # regex file - prints the count, never fails
 }
 
 # snap ROOT - stable fingerprint of a root: paths, file digests, link
-# targets. Excludes build/ and cache/
-# Roots never contain whitespace, so
+# targets. Excludes build/, cache/, and log/ (per-run scratch and build
+# logs, not root state). Roots never contain whitespace, so
 # line-based processing is safe.
 snap() {
     (
         cd "$1" || exit 1
-        find . \( -path ./build -o -path ./cache \) -prune -o -print \
+        find . \( -path ./build -o -path ./cache -o -path ./log \) -prune -o -print \
             | LC_ALL=C sort
-        find . \( -path ./build -o -path ./cache \) -prune -o -type f -print \
+        find . \( -path ./build -o -path ./cache -o -path ./log \) -prune -o -type f -print \
             | LC_ALL=C sort | while read -r sn_f; do sha256sum "$sn_f"; done
-        find . \( -path ./build -o -path ./cache \) -prune -o -type l -print \
+        find . \( -path ./build -o -path ./cache -o -path ./log \) -prune -o -type l -print \
             | LC_ALL=C sort | while read -r sn_l; do
                 printf '%s -> %s\n' "$sn_l" "$(readlink "$sn_l")"
             done

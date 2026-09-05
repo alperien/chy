@@ -214,7 +214,10 @@ def _run(cmd, **kwargs):
 
 
 def _curl(url):
-    cmd = ["curl", "-sSfL", "--max-time", "300"]
+    cmd = ["curl", "-sSL", "--max-time", "300",
+           # the final response's status code rides stdout's last line;
+           # no -f, so curl hands us the code instead of eating it
+           "-w", "\n%{http_code}"]
     stdin = None
     token = os.environ.get("GITHUB_TOKEN")
     if token and urllib.parse.urlsplit(url).hostname == "api.github.com":
@@ -228,7 +231,18 @@ def _curl(url):
     if proc.returncode != 0:
         raise SnapshotError("fetch failed: %s: %s"
                             % (url, proc.stderr.decode().strip()))
-    return proc.stdout
+    # curl exit 0: split the body from the trailing status code (the
+    # body is exactly what preceded the final \n<code>)
+    body, _sep, code = proc.stdout.rpartition(b"\n")
+    if code.isdigit() and 400 <= int(code) <= 599:
+        if int(code) in (403, 429):
+            raise SnapshotError(
+                "fetch failed: %s: HTTP %s: rate-limit-or-forbidden"
+                " (unauthenticated api.github.com allows 60 req/hour;"
+                " set GITHUB_TOKEN to raise it)" % (url, code.decode()))
+        raise SnapshotError("fetch failed: %s: HTTP %s"
+                            % (url, code.decode()))
+    return body
 
 
 def _head_times(url):

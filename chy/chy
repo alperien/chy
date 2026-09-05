@@ -486,9 +486,19 @@ prepare_build() { # prepare_build <name>
 
 # build
 # sh <recipe dir>/build <destdir> <version>, cwd the prepared build dir, with
-# the environment. A nonzero exit aborts the install.
+# the environment. A nonzero exit aborts the install. The whole session is
+# tee'd to $CHY_ROOT/log/<name>-<version>-<utc>.log; the build's exit status
+# rides a status file, not the pipeline's (a pipe would only report tee).
 run_build() { # run_build <name>
     step "$1" "build $1-$R_VER"
+    require "$1" tee
+    require "$1" date
+    rb_logdir=$CHY_ROOT/log
+    mkdir -p "$rb_logdir" || fail "$1" "cannot create the log dir"
+    rb_ts=$(date -u +%Y%m%dT%H%M%SZ) || fail "$1" "cannot read the clock"
+    rb_log=$rb_logdir/$1-$R_VER-$rb_ts.log
+    rb_rc=$CHY_ROOT/build/build-rc
+    rm -f "$rb_rc"
     (
         cd "$WORK" || exit 1
         CHY_PREFIX=$CHY_ROOT/usr
@@ -500,10 +510,24 @@ run_build() { # run_build <name>
         # spec default: tools that read XDG data (g-ir-scanner's .gir
         # lookup, vala, schemas) have to see installed packages
         XDG_DATA_DIRS="$CHY_PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+        # kiss-style toolchain defaults: caller values win; kiss build
+        # scripts read $DESTDIR, and exporting it lets them work
+        # unmodified alongside chy's $1.
+        CC=${CC:-cc} CXX=${CXX:-c++} AR=${AR:-ar} NM=${NM:-nm}
+        RANLIB=${RANLIB:-ranlib} DESTDIR=$DEST
         export CHY_ROOT CHY_PREFIX PATH CPPFLAGS LDFLAGS PKG_CONFIG_PATH \
-            XDG_DATA_DIRS
-        exec sh "$R_DIR/build" "$DEST" "$R_VER"
-    ) || fail "$1" "build failed"
+            XDG_DATA_DIRS CC CXX AR NM RANLIB DESTDIR
+        sh "$R_DIR/build" "$DEST" "$R_VER"
+        printf '%s' "$?" >"$rb_rc"
+    ) 2>&1 | tee "$rb_log"
+    rb_status=
+    [ -f "$rb_rc" ] && rb_status=$(cat "$rb_rc") || :
+    case $rb_status in
+        0) return 0 ;;
+        # No readable status means the subshell died before the build
+        # finished (or the write failed): that is a failure too.
+        *) fail "$1" "build failed (log: $rb_log)" ;;
+    esac
 }
 
 # normalize
