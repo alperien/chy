@@ -35,6 +35,9 @@ class Result:
     .depends       flattened, final runtime dependency names (sorted)
     .makedepends   flattened, final build dependency names (sorted)
     .files         {recipe-relative path: bytes}, everything write() emits
+    .dropped       packaging metadata dropped as having no chy concept,
+                   ["<key>: <value>"] in dump order (the report mirrors
+                   these per translated package)
     """
 
     def __init__(self, name):
@@ -44,6 +47,7 @@ class Result:
         self.depends = []
         self.makedepends = []
         self.files = {}
+        self.dropped = []
 
 
 # section 2: dump reading
@@ -1253,11 +1257,17 @@ def _translate_into(result, name, snap, dumpdir):
         if 'pkg-config' in haystack:
             injected.append('pkg-config')
 
-    # packaging metadata with no chy concept
+    # packaging metadata with no chy concept.  The meta `dropped:`
+    # ledger keeps naming the key only; the values ride Result.dropped
+    # so the run report and stderr can say WHAT was left behind (a
+    # translated daemon with a dropped /etc conf file or system
+    # account installs with that gap, loudly).
     if dump['conf_files']:
         dropped.add('conf_files')
+        result.dropped.append('conf_files: %s' % dump['conf_files'])
     if dump['system_accounts']:
         dropped.add('system_accounts')
+        result.dropped.append('system_accounts: %s' % dump['system_accounts'])
 
     # dependencies
     pmap = repodata.providers_map(snap.slice)

@@ -274,6 +274,11 @@ def cmd_translate(args):
             emit.write(result, outroot)
             translated.append(name)
             report.append("translated: %s" % name)
+            for note in result.dropped:
+                report.append("dropped: %s: %s" % (name, note))
+                sys.stderr.write("chytrans: warning: %s: dropped %s"
+                                 " (no chy concept for it)\n"
+                                 % (name, note))
             for src, binaries in contrib.items():
                 hints.setdefault(src, set()).update(binaries)
         finally:

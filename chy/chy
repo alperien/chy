@@ -342,22 +342,63 @@ fetch_all() { # fetch_all <name>
 
 # build dir
 is_archive() {
-    case $1 in *.tar.gz|*.tgz|*.tar.xz|*.tar.bz2) return 0 ;; *) return 1 ;; esac
+    case $1 in
+        *.tar.gz|*.tgz|*.tar.xz|*.tar.bz2|*.tar|*.tar.zst|*.tzst|*.zip)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# tar with the right zstd driver: modern GNU tar and bsdtar take
+# --zstd; older GNU tar can only pipe an external unzstd via -I.
+# $1 is the mode picked by stage_source's probe.
+tar_x() { # tar_x <mode> <tar args...>
+    tx_m=$1; shift
+    case $tx_m in
+        z)  tar --zstd "$@" ;;
+        I)  tar -I unzstd "$@" ;;
+        *)  tar "$@" ;;
+    esac
 }
 
 # extract (known archives) or copy (anything else) one fetched source
 # into the build dir.
 stage_source() { # stage_source <name> <filename> <dir>
     ss_cache=$CHY_ROOT/cache/$2
+    case $2 in
+        *.zip)
+            require "$1" unzip
+            # unzip happily writes absolute paths to / and walks .. out
+            # of the target dir, so the same refusal applies as for tars.
+            unzip -Z1 "$ss_cache" 2>/dev/null | while IFS= read -r ss_m; do
+                case $ss_m in /*|../*|*/../*|*/..|..) exit 1 ;; esac
+            done || fail "$1" "unsafe path in archive $2; refusing to extract"
+            unzip -q "$ss_cache" -d "$3" || fail "$1" "cannot extract $2"
+            return 0 ;;
+    esac
     if is_archive "$2"; then
         require "$1" tar
+        ss_z=''
+        case $2 in
+            *.tar.zst|*.tzst)
+                # Probe, don't guess: --zstd exists in two unrelated tar
+                # implementations and -I only in GNU tar.
+                if tar --zstd -tf "$ss_cache" >/dev/null 2>&1; then
+                    ss_z=z
+                else
+                    require "$1" unzstd
+                    tar -I unzstd -tf "$ss_cache" >/dev/null 2>&1 ||
+                        fail "$1" "cannot read zstd archive $2"
+                    ss_z=I
+                fi ;;
+        esac
         # Refuse absolute or parent-traversing members before extracting:
         # don't let a hostile archive out of the build dir, and not every
         # tar enforces that itself.
-        tar -tf "$ss_cache" 2>/dev/null | while IFS= read -r ss_m; do
+        tar_x "$ss_z" -tf "$ss_cache" 2>/dev/null | while IFS= read -r ss_m; do
             case $ss_m in /*|../*|*/../*|*/..|..) exit 1 ;; esac
         done || fail "$1" "unsafe path in archive $2; refusing to extract"
-        tar -xf "$ss_cache" -C "$3" || fail "$1" "cannot extract $2"
+        tar_x "$ss_z" -xf "$ss_cache" -C "$3" || fail "$1" "cannot extract $2"
     else
         cp "$ss_cache" "$3/" || fail "$1" "cannot copy $2 into the build dir"
     fi
