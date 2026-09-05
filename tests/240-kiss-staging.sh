@@ -65,6 +65,7 @@ mkdir -p "$1/usr/bin"
 printf 'x\n' >"$1/usr/bin/emptyroot-tool"
 EOF
 run_chy install emptyroot
+# shellcheck disable=SC2016
 assert_rc 0 'an empty $DEST$CHY_ROOT does not force the chy layout'
 assert_link "$CHY_ROOT/usr/bin/emptyroot-tool" \
     '../../store/emptyroot/usr/bin/emptyroot-tool'

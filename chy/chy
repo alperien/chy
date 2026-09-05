@@ -3,8 +3,8 @@
 #
 # install builds each package into store/<name>-<version>/, links it into
 # the usr/ symlink farm, and records it under db/installed/. upgrade,
-# remove, list, outdated, why, and doctor all work from that on-disk
-# state. usage() lists the verbs.
+# remove, list, search, owns, orphans, outdated, why, and doctor all work
+# from that on-disk state. usage() lists the verbs.
 
 CHY_VERSION=0.5.0
 
@@ -37,11 +37,11 @@ usage:
   chy remove [-r] name...
                         unlink and delete packages; -r cascades orphans
   chy list [name...]    list installed packages
+  chy search pattern    list recipes whose name contains pattern
+  chy owns path...      print the installed package owning each path
+  chy orphans           installed packages nothing requires
   chy outdated          report installed packages whose recipe moved
   chy why name...       explain why a package is installed
-  chy provided          list host-provided package names
-  chy doctor            report unresolved libraries and manifest drift
-  chy version           print chy's version
 
 \$CHY_ROOT selects the root (default: \$HOME/.chy).
 EOF
@@ -1530,6 +1530,63 @@ cmd_list() {
     exit "$cl_bad"
 }
 
+# search: recipe names (overlay + repo) containing the pattern as a
+# substring, with the recipe's version and revision (revision defaulting
+# to 1, like every recipe reader). An overlay dir shadows the repo dir of
+# the same name wholesale, so the repo entry is skipped then. A report:
+# no matches is still exit 0.
+cmd_search() {
+    no_opts "$@"
+    [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+    for cs_d in "$CHY_ROOT/recipes/"* "$CHY_ROOT/overlay/"*; do
+        [ -d "$cs_d" ] || continue
+        cs_n=${cs_d##*/}
+        case $cs_n in *"$1"*) ;; *) continue ;; esac
+        # overlay shadows repo: one line per name, the overlay's.
+        [ ! -d "$CHY_ROOT/overlay/$cs_n" ] ||
+            [ "$cs_d" = "$CHY_ROOT/overlay/$cs_n" ] || continue
+        read_version "$cs_d/version"
+        cs_rev=${VQ_REV:-1}
+        printf '%s %s %s\n' "$cs_n" "${VQ_VER:--}" "$cs_rev"
+    done | LC_ALL=C sort
+    exit 0
+}
+
+# owns: which installed package owns a root-relative path, by exact
+# match against the db manifests. Every path is answered: owners print
+# `name path`, unowned paths get an error and a nonzero exit, like
+# cmd_list's per-name pattern.
+cmd_owns() {
+    no_opts "$@"
+    [ "$#" -gt 0 ] || { usage >&2; exit 2; }
+    co_bad=0
+    for co_p in "$@"; do
+        co_found=0
+        for co_d in "$CHY_ROOT/db/installed/"*; do
+            [ -f "$co_d/manifest" ] || continue
+            if grep -Fxq -- "$co_p" "$co_d/manifest"; then
+                printf '%s %s\n' "${co_d##*/}" "$co_p"
+                co_found=1
+            fi
+        done
+        [ "$co_found" -eq 1 ] || { err owns "no package owns $co_p"; co_bad=1; }
+    done
+    exit "$co_bad"
+}
+
+# orphans: installed packages nothing holds — no requested marker and no
+# installed package's (possibly `a|b`) depends names them. The remove -r
+# seed set, printed list-style.
+cmd_orphans() {
+    [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+    installed_names | while IFS= read -r cp_n; do
+        [ -f "$CHY_ROOT/db/installed/$cp_n/requested" ] && continue
+        [ -z "$(requirers_of "$cp_n" ' ')" ] || continue
+        list_one "$cp_n"
+    done
+    exit 0
+}
+
 # outdated
 # The predicate: a package's db "<version> <revision>" isn't byte-equal to its
 # recipe's (recipe revision defaulting to 1). Version files only, never full
@@ -1911,6 +1968,9 @@ main() {
         upgrade)      shift; acquire_lock; cmd_upgrade "$@" ;;
         remove)       shift; acquire_lock; cmd_remove "$@" ;;
         list)         shift; cmd_list "$@" ;;
+        search)       shift; cmd_search "$@" ;;
+        owns)         shift; cmd_owns "$@" ;;
+        orphans)      shift; cmd_orphans "$@" ;;
         outdated)     shift; cmd_outdated "$@" ;;
         why)          shift; cmd_why "$@" ;;
         provided)     shift; cmd_provided "$@" ;;
