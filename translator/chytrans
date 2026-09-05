@@ -2,7 +2,8 @@
 """Turn Void Linux package data into chy recipes.
 
     chytrans snapshot --out DIR NAME...             (network)
-    chytrans translate --snapshot DIR --out DIR NAME...   (offline)
+    chytrans translate --snapshot DIR --out DIR NAME...   (offline;
+        --from-snapshot accepted for --snapshot)
     chytrans overlay-check --snapshot DIR --overlay DIR   (offline)
 
 The moving parts: the snapshot, the emitted outputs, shlibs.map,

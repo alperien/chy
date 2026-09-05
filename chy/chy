@@ -531,29 +531,71 @@ run_build() { # run_build <name>
 }
 
 # normalize
-# The build staged a DESTDIR image of the real prefix at $DEST$CHY_ROOT.
-# Check it and normalize it, still in scratch, to a $CHY_ROOT-relative
-# tree at $NORM. On failure the root is untouched.
+# The build staged a DESTDIR image of the real prefix. chy recipes stage it
+# at $DEST$CHY_ROOT (they do `make install DESTDIR="$1$CHY_ROOT"`); kiss
+# recipes stage it directly at $DEST (they do `make install DESTDIR="$1/usr"`,
+# prefix-relative). Accept either, never both: normalize checks the image and
+# produces a $CHY_ROOT-relative tree at $NORM, still in scratch. On failure
+# the root is untouched.
 normalize() { # normalize <name>
     NORM=$CHY_ROOT/build/pkg
     n_bad=$CHY_ROOT/build/norm-failed
     rm -f "$n_bad"
     require "$1" readlink
 
-    # Every staged path has to resolve under $DEST$CHY_ROOT. This loop also
-    # catches newlines: one in a path splits off a fragment that can't start
-    # with the prefix, so it hits the else and aborts. Don't turn it into
-    # find -path, you'd lose that.
+    # Layout detection, by the same loop-over-paths shape as the check
+    # below (find -quit is not portable; an empty $DEST$CHY_ROOT dir is no
+    # evidence either — make creates the DESTDIR root happily). Every
+    # staged file/symlink is classified into one of two marker files.
+    n_ck=$CHY_ROOT/build/norm-chy n_dk=$CHY_ROOT/build/norm-direct
+    rm -f "$n_ck" "$n_dk"
+    find "$DEST" \( -type f -o -type l \) -print 2>/dev/null |
+        while IFS= read -r n_p; do
+            case $n_p in
+                "$DEST$CHY_ROOT/"*) true >"$n_ck" ;;
+                "$DEST/"*)          true >"$n_dk" ;;
+                # A fragment matching neither can only come from a path
+                # containing a newline; the check below reports it.
+                *)                  : ;;
+            esac
+        done
+
+    if [ -e "$n_ck" ] && [ -e "$n_dk" ]; then
+        # Both shapes carry entries: the image is ambiguous, and guessing
+        # would silently install the wrong tree. Refuse loudly, naming
+        # both roots and every path staged directly under $DEST.
+        err "$1" "ambiguous staging: the build installed into both \$DEST\$CHY_ROOT ($DEST$CHY_ROOT) and \$DEST ($DEST)"
+        find "$DEST" \( -type f -o -type l \) -print 2>/dev/null |
+            while IFS= read -r n_p; do
+                case $n_p in
+                    "$DEST$CHY_ROOT/"*) ;;
+                    "$DEST/"*) err "$1" "staged outside the prefix: ${n_p#"$DEST"}" ;;
+                esac
+            done
+        exit 1
+    fi
+
+    n_base=$DEST
+    if [ -e "$n_ck" ]; then
+        n_base=$DEST$CHY_ROOT
+    elif [ ! -e "$n_dk" ]; then
+        fail "$1" "build installed nothing"
+    fi
+
+    # Every staged path has to resolve under the detected image. This loop
+    # also catches newlines: one in a path splits off a fragment that can't
+    # start with the prefix, so it hits the else and aborts. Don't turn it
+    # into find -path, you'd lose that.
     find "$DEST" \( -type f -o -type l \) -print | while IFS= read -r n_p; do
         case $n_p in
-            "$DEST$CHY_ROOT/"*) ;;
+            "$n_base/"*) ;;
             *) err "$1" "staged outside the prefix (or a path contains a newline): ${n_p#"$DEST"}"
                 true >"$n_bad" ;;
         esac
     done
     [ ! -e "$n_bad" ] || fail "$1" "build staged a path outside \$CHY_ROOT or containing a newline"
 
-    if [ -z "$(find "$DEST$CHY_ROOT" \( -type f -o -type l \) -print 2>/dev/null)" ]; then
+    if [ -z "$(find "$n_base" \( -type f -o -type l \) -print 2>/dev/null)" ]; then
         fail "$1" "build installed nothing"
     fi
 
@@ -561,20 +603,28 @@ normalize() { # normalize <name>
     # the texinfo directory index and gettext's charset.alias. Every
     # GNU make install stages them, so the first package would claim
     # them and every later one would conflict.
-    rm -f "$DEST$CHY_ROOT/usr/share/info/dir" \
-        "$DEST$CHY_ROOT/usr/lib/charset.alias"
+    rm -f "$n_base/usr/share/info/dir" "$n_base/usr/lib/charset.alias"
 
     find "$DEST" -type l -print | while IFS= read -r n_p; do
         n_t=$(readlink "$n_p")
         case $n_t in
             "$DEST"*)
-                err "$1" "symlink baked with the staging path: ${n_p#"$DEST$CHY_ROOT/"} -> $n_t"
+                err "$1" "symlink baked with the staging path: ${n_p#"$n_base/"} -> $n_t"
                 true >"$n_bad" ;;
         esac
     done
     [ ! -e "$n_bad" ] || fail "$1" "symlink targets baked with \$1 (DESTDIR)"
 
-    mv "$DEST$CHY_ROOT" "$NORM" || fail "$1" "cannot normalize the staged tree"
+    if [ "$n_base" = "$DEST" ]; then
+        # kiss layout: the whole $DEST tree IS the normalized tree. Drop a
+        # crashed run's leftover first: mv onto an existing directory would
+        # nest $DEST inside it instead of replacing it.
+        rm -rf "$NORM"
+        mv "$DEST" "$NORM" || fail "$1" "cannot normalize the staged tree"
+        mkdir -p "$DEST" || fail "$1" "cannot normalize the staged tree"
+    else
+        mv "$DEST$CHY_ROOT" "$NORM" || fail "$1" "cannot normalize the staged tree"
+    fi
 }
 
 # linking
