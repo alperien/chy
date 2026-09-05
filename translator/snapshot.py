@@ -236,10 +236,13 @@ def _curl(url):
     body, _sep, code = proc.stdout.rpartition(b"\n")
     if code.isdigit() and 400 <= int(code) <= 599:
         if int(code) in (403, 429):
-            raise SnapshotError(
-                "fetch failed: %s: HTTP %s: rate-limit-or-forbidden"
-                " (unauthenticated api.github.com allows 60 req/hour;"
-                " set GITHUB_TOKEN to raise it)" % (url, code.decode()))
+            hint = (" (unauthenticated api.github.com allows 60 req/hour;"
+                    " set GITHUB_TOKEN to raise it)"
+                    if urllib.parse.urlsplit(url).hostname == "api.github.com"
+                    else "")
+            raise SnapshotError("fetch failed: %s: HTTP %s:"
+                                " rate-limit-or-forbidden%s"
+                                % (url, code.decode(), hint))
         raise SnapshotError("fetch failed: %s: HTTP %s"
                             % (url, code.decode()))
     return body
