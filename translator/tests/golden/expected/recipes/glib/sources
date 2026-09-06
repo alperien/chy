@@ -1,1 +1,3 @@
 https://download.gnome.org/sources/glib/2.88/glib-2.88.0.tar.xz https://sources.voidlinux.org/glib-2.88.0/glib-2.88.0.tar.xz
+https://raw.githubusercontent.com/void-linux/void-packages/57d7adb4944d/srcpkgs/glib/files/gi-tool-emulator-wrapper
+https://raw.githubusercontent.com/void-linux/void-packages/57d7adb4944d/srcpkgs/glib/files/gi-xbps-qemuwrapper
