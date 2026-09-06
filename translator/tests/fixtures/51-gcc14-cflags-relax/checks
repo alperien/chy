@@ -1,0 +1,5 @@
+exit :: 0
+file-line :: recipes/wol/build :: export CFLAGS="${CFLAGS:+$CFLAGS }-DFOO -Wno-error=implicit-function-declaration"
+file-line :: recipes/wol/meta :: relaxed: gcc-14: C implicit declarations became hard errors
+file-not-has :: recipes/gnx/build :: implicit-function-declaration
+file-not-has :: recipes/gnx/meta :: relaxed:

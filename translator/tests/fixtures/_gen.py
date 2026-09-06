@@ -1658,6 +1658,29 @@ def case_50_refuse_template_wrksrc():
     c.finish()
 
 
+def case_51_gcc14_cflags_relax():
+    # gcc 14 made C implicit declarations hard errors (8 held recipes).
+    # The relax is name-keyed on the diagnosed set: a relaxed package
+    # gets the flag in append form (template CFLAGS survive ahead of it)
+    # and a meta `relaxed:` line naming the reason; a sibling that isn't
+    # in the set proves nothing lands on healthy recipes.
+    c = Case("51-gcc14-cflags-relax")
+    c.names("wol", "gnx")
+    c.template("wol", tmpl("wol", lines=['CFLAGS="-DFOO"']))
+    c.template("gnx", tmpl("gnx"))
+    c.slice(E("wol"), E("gnx"))
+    c.checks(
+        "exit :: 0\n"
+        'file-line :: recipes/wol/build :: export CFLAGS="${CFLAGS:+$CFLAGS }'
+        '-DFOO -Wno-error=implicit-function-declaration"\n'
+        "file-line :: recipes/wol/meta :: relaxed: gcc-14: C implicit "
+        "declarations became hard errors\n"
+        "file-not-has :: recipes/gnx/build :: implicit-function-declaration\n"
+        "file-not-has :: recipes/gnx/meta :: relaxed:\n"
+    )
+    c.finish()
+
+
 def main():
     fns = [fn for nm, fn in sorted(globals().items())
            if nm.startswith("case_") and callable(fn)]

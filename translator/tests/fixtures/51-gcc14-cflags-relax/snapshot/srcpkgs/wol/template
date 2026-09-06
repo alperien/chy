@@ -1,0 +1,12 @@
+# Template file for 'wol'
+pkgname=wol
+version=1.0
+revision=1
+build_style=gnu-configure
+CFLAGS="-DFOO"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/wol"
+distfiles="https://example.org/dist/wol-${version}.tar.gz"
+checksum=260eba3ea589d08c947c9fc3e82e6e36196a8f1a9449a2d0a7a82d5da0c010ee

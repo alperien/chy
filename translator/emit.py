@@ -953,6 +953,30 @@ _PINS = {
 }
 
 
+# gcc-14 CFLAGS relaxation, name-keyed like _PINS.  gcc 14 turned C
+# implicit function declarations into hard errors, which holds the eight
+# packages below (gate logs: "implicit declaration of function"); their
+# upstreams predate the declarations they rely on and compiling with the
+# flag is the remedy gcc itself names in the error.  A style-wide knob
+# was considered and rejected: an implicit declaration returning a
+# 64-bit value (malloc without stdlib.h) truncates silently on x86_64
+# with no error at build time, and a style-wide flag would hide that on
+# every recipe.  Only the eight diagnosed names carry the flag; every
+# other recipe still fails at compile time.  Each relaxed package
+# carries a meta `relaxed:` line naming the reason -- auditable, and
+# easy to prune once upstream adds the includes.
+_CFLAGS_RELAX = {
+    'argtable': 'gcc-14: C implicit declarations became hard errors',
+    'ccd2iso': 'gcc-14: C implicit declarations became hard errors',
+    'chmlib': 'gcc-14: C implicit declarations became hard errors',
+    'clustalo': 'gcc-14: C implicit declarations became hard errors',
+    'logpp': 'gcc-14: C implicit declarations became hard errors',
+    'uniutils': 'gcc-14: C implicit declarations became hard errors',
+    'vorbisgain': 'gcc-14: C implicit declarations became hard errors',
+    'wol': 'gcc-14: C implicit declarations became hard errors',
+}
+
+
 # section 10: sources, checksums, files/ assets, patches
 
 _ARCHIVE_SUFFIXES = ('.tar.gz', '.tgz', '.tar.xz', '.tar.bz2')
@@ -1139,9 +1163,10 @@ def _collect_patches(srcdir, name):
 
 # section 11: the meta ledger
 # origin/template/void-commit/pkgver/style, then dropped:, pinned:,
-# expect-needed:, each group sorted.  Never a translator version here.
+# relaxed:, expect-needed:, each group sorted.  Never a translator
+# version here.
 
-def _build_meta(name, entry, style, dropped, pinned, commit):
+def _build_meta(name, entry, style, dropped, pinned, commit, relaxed=()):
     """commit is the one the srcpkg tree was fetched at: the snapshot's
     pin when the kill switch is engaged, else the package's
     source-revisions commit (the caller resolves which)."""
@@ -1154,6 +1179,7 @@ def _build_meta(name, entry, style, dropped, pinned, commit):
     ]
     lines += ['dropped: %s' % d for d in sorted(dropped)]
     lines += ['pinned: %s' % p for p in sorted(pinned)]
+    lines += ['relaxed: %s' % r for r in sorted(relaxed)]
     # expect-needed: repodata shlib-requires verbatim, byte-sorted (the
     # determinism rule); checks NEEDED drift against these.
     for soname in sorted(entry.get('shlib-requires') or []):
@@ -1312,6 +1338,14 @@ def _translate_into(result, name, snap, dumpdir):
         if pin_arg not in cfg_args:
             cfg_args.append(pin_arg)
     pinned = list(_PINS.get(name, {}).get('meta', []))
+    # gcc-14 CFLAGS relax, _CFLAGS_RELAX above.  The flag rides env_vars
+    # so _env_lines emits it in append form, after any template CFLAGS.
+    relax_reason = _CFLAGS_RELAX.get(name)
+    relaxed = []
+    if relax_reason:
+        dump['env_vars'] = (dump['env_vars'] + '\n' if dump['env_vars'] else
+                            '') + 'CFLAGS=-Wno-error=implicit-function-declaration'
+        relaxed.append(relax_reason)
     build_script = _assemble_build(style, dump, cfg_args, hooks)
 
     # style tool injection
@@ -1374,7 +1408,7 @@ def _translate_into(result, name, snap, dumpdir):
     if conflicts:
         files['conflicts'] = ('\n'.join(conflicts) + '\n').encode()
     files['meta'] = _build_meta(name, entry, style, dropped, pinned,
-                                commit).encode()
+                                commit, relaxed).encode()
     files.update(patches)
 
     _self_validate(name, files, style)
