@@ -1,0 +1,12 @@
+# Template file for 'gnp'
+pkgname=gnp
+version=1.0
+revision=1
+build_style=gnu-configure
+configure_args="--prefix=/usr --prefix"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/gnp"
+distfiles="https://example.org/dist/gnp-${version}.tar.gz"
+checksum=f84201727a086a9440e94978175b6cb85f52794860438d1aaf620358616a5a3a
