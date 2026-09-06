@@ -1818,16 +1818,18 @@ cmd_doctor() {
 # root that has no bin dir yet, so a profile is silent until the first
 # install.
 cmd_env() {
-    # shellcheck disable=SC2016  # the single-quoted ${VAR:+...} text IS
-    # the output: the expansion must happen in the reader's shell, at
-    # eval time, not here.
     [ "$#" -eq 0 ] || { usage >&2; exit 2; }
     [ -d "$CHY_ROOT" ] || return 0
     [ -x "$CHY_ROOT/usr/bin" ] || return 0
+    # The single-quoted ${VAR:+...} text IS the output: the expansion
+    # happens in the reader's shell at eval time, not here.
+    # shellcheck disable=SC2016
     printf 'export PATH="$CHY_ROOT/usr/bin%s"\n' \
         '${PATH:+:$PATH}'
+    # shellcheck disable=SC2016
     printf 'export XDG_DATA_DIRS="$CHY_ROOT/usr/share%s"\n' \
         '${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}'
+    # shellcheck disable=SC2016
     printf 'export MANPATH="$CHY_ROOT/usr/share/man%s"\n' \
         '${MANPATH:+:$MANPATH}'
 }
