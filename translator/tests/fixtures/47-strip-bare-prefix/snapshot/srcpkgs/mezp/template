@@ -1,0 +1,12 @@
+# Template file for 'mezp'
+pkgname=mezp
+version=1.0
+revision=1
+build_style=meson
+configure_args="--prefix -Ddictdir=/usr/share/dict"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/mezp"
+distfiles="https://example.org/dist/mezp-${version}.tar.gz"
+checksum=385cdfccf59d601576b005cda5f9d633a6ece3f62028f563ee315135d65c2ced

@@ -1,0 +1,7 @@
+exit :: 0
+file-count :: recipes/mezp/build :: --prefix :: 1
+file-count :: recipes/gnp/build :: --prefix :: 1
+file-count :: recipes/gnp/build :: --prefix="$CHY_PREFIX" :: 1
+file-count :: recipes/gnp/build :: --sysconfdir="$CHY_ROOT/etc" :: 1
+file-count :: recipes/gnp/build :: --prefix -- :: 0
+file-not-has :: recipes/mezp/build :: -Ddictdir=/usr/share

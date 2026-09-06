@@ -1535,6 +1535,45 @@ def case_46_cmake_policy_floor():
     c.finish()
 
 
+def case_47_refuse_bare_prefix():
+    # a template-supplied --prefix token (the aspell dictionary family
+    # carries a bare one in configure_args) is stripped, whatever the
+    # style: the emitter's --prefix="$CHY_PREFIX" stays the only one,
+    # no stray positional reaches meson ("invalid variable name:
+    # --prefix") or configure ("option requires an argument"). A
+    # sibling gnu-configure package with --prefix=/usr keeps the old
+    # assignment-strip behavior.
+    c = Case("47-strip-bare-prefix")
+    c.names("mezp", "gnp")
+    c.template("mezp", tmpl("mezp", style="meson", lines=[
+        'configure_args="--prefix -Ddictdir=/usr/share/dict"',
+    ]))
+    c.template("gnp", tmpl("gnp", lines=[
+        'configure_args="--prefix=/usr --prefix"',
+    ]))
+    c.slice(E("mezp"), E("meson"), E("ninja"), E("pkg-config"), E("gnp"))
+    c.expect("recipes/mezp/build",
+             '#!/bin/sh -e\n'
+             'meson setup build \\\n'
+             '    --prefix="$CHY_PREFIX" \\\n'
+             '    --sysconfdir="$CHY_ROOT/etc" \\\n'
+             '    --libdir=lib \\\n'
+             '    --buildtype=release \\\n'
+             '    -Ddictdir="$CHY_ROOT/usr/share/dict"\n'
+             'ninja -C build\n'
+             'DESTDIR="$1" ninja -C build install\n')
+    c.checks(
+        "exit :: 0\n"
+        "file-count :: recipes/mezp/build :: --prefix :: 1\n"
+        "file-count :: recipes/gnp/build :: --prefix :: 1\n"
+        'file-count :: recipes/gnp/build :: --prefix="$CHY_PREFIX" :: 1\n'
+        'file-count :: recipes/gnp/build :: --sysconfdir="$CHY_ROOT/etc" :: 1\n'
+        "file-count :: recipes/gnp/build :: --prefix -- :: 0\n"
+        "file-not-has :: recipes/mezp/build :: -Ddictdir=/usr/share\n"
+    )
+    c.finish()
+
+
 def main():
     fns = [fn for nm, fn in sorted(globals().items())
            if nm.startswith("case_") and callable(fn)]

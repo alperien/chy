@@ -735,8 +735,10 @@ def _classify_hooks(functions, ctx):
 
 
 # section 7: path-argument rewriting for configure_args
-# Exactly one --prefix, emitter-supplied.  --sysconfdir -> $CHY_ROOT/etc.
-# --libdir dropped.  Any =/... absolute path: /usr, /etc, /var roots are
+# Exactly one --prefix, emitter-supplied (a template's --prefix or
+# --prefix=... token is stripped, whichever style carries it).
+# --sysconfdir -> $CHY_ROOT/etc.
+# Any =/... absolute path: /usr, /etc, /var roots are
 # rewritten under $CHY_ROOT; anything else refuses.  /run is rewritten too,
 # a recorded deviation: the list stops at those three, but dbus's evaluated
 # -Dsystem_socket=/run/... has to translate, and refusing would break
@@ -753,8 +755,14 @@ def _rewrite_configure_args(tokens):
         if '"' in tok or "'" in tok:
             raise Refuse('configure argument %r contains quoting; cannot '
                          'be tokenized faithfully' % tok)
-        if tok.startswith('--prefix=') or tok.startswith('-DCMAKE_INSTALL_PREFIX='):
-            continue # stripped; the emitter supplies exactly one prefix
+        # the emitter supplies exactly one prefix, in the style's own
+        # spelling: a template token lands as a stray positional (meson
+        # dies "invalid variable name: --prefix", the aspell family) or
+        # a bare duplicate flag (configure: option requires an argument)
+        if tok in ('--prefix', '-DCMAKE_INSTALL_PREFIX') or \
+                tok.startswith('--prefix=') or \
+                tok.startswith('-DCMAKE_INSTALL_PREFIX='):
+            continue
         if tok.startswith('--sysconfdir='):
             arg = '--sysconfdir="$CHY_ROOT/etc"'
             if arg not in out:
