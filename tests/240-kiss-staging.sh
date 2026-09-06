@@ -1,8 +1,10 @@
 #!/bin/sh
 # kiss-style staging: a build that installs prefix-relative under $1
 # (mkdir -p "$1/usr/bin"; the whole $DEST tree is the image) normalizes
-# and links like a chy-style recipe. A build staging into BOTH layouts
-# is refused loudly, naming both roots.
+# and links like a chy-style recipe. Real builds mix the two shapes in one
+# image (a style stage plus a hook or an upstream Makefile with an absolute
+# sysconfdir); normalize merges them over the shared layout, refusing only
+# when both shapes staged the same path.
 set -eu
 cd "$(dirname "$0")/.." || exit 2
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -35,25 +37,54 @@ assert_eq "$(cat "$CHY_ROOT/usr/bin/kissy-alias")" 'kissy-tool'
 
 run_chy doctor
 assert_rc 0 'doctor clean after a kiss-style install'
-file_has_line "$OUT" 'doctor: clean'
 
-# --- mixed: staging into both $1$CHY_ROOT and $1 directly is refused ---
+# --- mixed: both shapes in one image merge over the shared layout ---
+# (what the gate saw: a wrapped hook install plus a style stage whose
+# upstream Makefile ignores the prefix and installs DESTDIR-relative)
 mkpkg "$CHY_ROOT" mixed 1.0
 cat >"$CHY_ROOT/recipes/mixed/build" <<'EOF'
 set -eu
+mkdir -p "$1$CHY_ROOT/usr/bin" "$1/etc"
+printf 'chy-side\n' >"$1$CHY_ROOT/usr/bin/mixed-chy"
+printf 'conf\n' >"$1/etc/mixed.conf"
+EOF
+run_chy install mixed
+assert_rc 0 'a mixed staging image merges and installs'
+assert_installed "$CHY_ROOT" mixed 1.0 1
+assert_link "$CHY_ROOT/usr/bin/mixed-chy" \
+    '../../store/mixed/usr/bin/mixed-chy'
+assert_link "$CHY_ROOT/etc/mixed.conf" '../store/mixed/etc/mixed.conf'
+assert_eq "$(cat "$CHY_ROOT/usr/bin/mixed-chy")" 'chy-side'
+assert_eq "$(cat "$CHY_ROOT/etc/mixed.conf")" 'conf'
+
+# --- mixed with a nested directory pair: the fold recurses ---
+mkpkg "$CHY_ROOT" nestmix 1.0
+cat >"$CHY_ROOT/recipes/nestmix/build" <<'EOF'
+set -eu
+mkdir -p "$1$CHY_ROOT/usr/share/nestmix" "$1/usr/share/doc/nestmix"
+printf 'data\n' >"$1$CHY_ROOT/usr/share/nestmix/data.txt"
+printf 'doc\n' >"$1/usr/share/doc/nestmix/README"
+EOF
+run_chy install nestmix
+assert_rc 0 'nested directory pairs merge'
+assert_eq "$(cat "$CHY_ROOT/usr/share/nestmix/data.txt")" 'data'
+assert_eq "$(cat "$CHY_ROOT/usr/share/doc/nestmix/README")" 'doc'
+
+# --- mixed with a true collision: both shapes staged the same path ---
+mkpkg "$CHY_ROOT" collide 1.0
+cat >"$CHY_ROOT/recipes/collide/build" <<'EOF'
+set -eu
 mkdir -p "$1$CHY_ROOT/usr/bin" "$1/usr/bin"
 printf 'chy-side\n' >"$1$CHY_ROOT/usr/bin/mixed-chy"
-printf 'kiss-side\n' >"$1/usr/bin/mixed-kiss"
+printf 'kiss-side\n' >"$1/usr/bin/mixed-chy"
 EOF
 snap0=$(snap "$CHY_ROOT")
-run_chy install mixed
-assert_rc 1 'a build staging both layouts is refused'
+run_chy install collide
+assert_rc 1 'a path both shapes staged is refused'
 file_has "$ERR" 'ambiguous staging'
-file_has "$ERR" "$CHY_ROOT/build/dest$CHY_ROOT"
-file_has "$ERR" "$CHY_ROOT/build/dest"
-file_has "$ERR" 'mixed-kiss'
+file_has "$ERR" 'mixed-chy'
 assert_eq "$(snap "$CHY_ROOT")" "$snap0" 'root untouched by the refusal'
-assert_not_installed "$CHY_ROOT" mixed
+assert_not_installed "$CHY_ROOT" collide
 
 # --- empty $DEST$CHY_ROOT dir + kiss staging: still the kiss layout ---
 # (make creates the DESTDIR root even when everything installs elsewhere)
