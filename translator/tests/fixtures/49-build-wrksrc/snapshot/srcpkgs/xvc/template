@@ -1,0 +1,12 @@
+# Template file for 'xvc'
+pkgname=xvc
+version=1.0
+revision=1
+build_style=gnu-configure
+build_wrksrc="build/generic"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/xvc"
+distfiles="https://example.org/dist/xvc-${version}.tar.gz"
+checksum=659bf5ecfac8cced4b52992ebf58976064f01fa8710860e8ae2a9fc1a6d3f917

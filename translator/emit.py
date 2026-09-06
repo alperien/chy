@@ -58,7 +58,7 @@ _DUMP_KEYS = (
     'distfiles', 'checksum', 'hostmakedepends', 'makedepends', 'depends',
     'conflicts', 'configure_args', 'make_build_args', 'make_install_args',
     'make_build_target', 'make_install_target', 'conf_files',
-    'system_accounts', 'patch_args', 'env_vars',
+    'system_accounts', 'patch_args', 'wrksrc', 'build_wrksrc', 'env_vars',
 )
 
 
@@ -896,10 +896,34 @@ def _env_lines(env_vars_value):
     return lines
 
 
+_WRKSRC_SENTINEL = '/xbps-stub/wrksrc'
+
+
+def _build_wrksrc_line(dump):
+    """The phase cwd, xbps-src's ch_wrksrc: chy's work dir is Void's
+    $wrksrc (the hoisted tarball root), so build_wrksrc is a cd.  Must
+    be a plain relative path under it."""
+    bw = dump['build_wrksrc'].strip()
+    if not bw:
+        return []
+    if ('"' in bw or "'" in bw or '\\' in bw or '$' in bw or '`' in bw
+            or bw.startswith('/') or bw.startswith('./')
+            or bw.endswith('/') or '..' in bw.split('/')):
+        raise Refuse('build_wrksrc %r is not a plain relative path under '
+                     'the source root' % bw)
+    for part in bw.split('/'):
+        if not part or not _ASSET_NAME_RE.match(part):
+            raise Refuse('build_wrksrc %r is not a plain relative path under '
+                         'the source root' % bw)
+    return ['cd %s || exit 1' % bw]
+
+
 def _assemble_build(style, dump, cfg_args, hooks):
-    """Order: env exports; post_patch; pre/CONFIGURE/post; pre/BUILD/post;
-    pre/INSTALL/post.  do_* replace the style stage; on style NONE
-    the translated do_* are the stages."""
+    """Order: env exports; post_patch; the build_wrksrc cd (patches and
+    post_patch run at the source root, only configure/build/install run
+    inside build_wrksrc, xbps-src's ch_wrksrc); pre/CONFIGURE/post;
+    pre/BUILD/post; pre/INSTALL/post.  do_* replace the style stage; on
+    style NONE the translated do_* are the stages."""
     conf, build, inst = _style_stages(style, dump, cfg_args)
     stage = {
         'configure': hooks.get(('configure', 'do'), conf),
@@ -912,6 +936,7 @@ def _assemble_build(style, dump, cfg_args, hooks):
     lines = ['#!/bin/sh -e']
     lines += _env_lines(dump['env_vars'])
     lines += hooks.get(('patch', 'post'), [])
+    lines += _build_wrksrc_line(dump)
     for st in ('configure', 'build', 'install'):
         lines += hooks.get((st, 'pre'), [])
         lines += stage[st]
@@ -1247,6 +1272,16 @@ def _translate_into(result, name, snap, dumpdir):
         raise Refuse('template %s-%s_%s disagrees with repodata %s: '
                      'incoherent snapshot'
                      % (name, dump['version'], dump['revision'], pkgver))
+
+    # a template-set wrksrc has no faithful chy mapping: xbps-src resets
+    # the variable after sourcing (shutils/common.sh), so the template's
+    # value never takes effect upstream and there is no upstream behavior
+    # to map.  Refuse loudly instead.  The layout knob xbps-src actually
+    # honors is build_wrksrc, handled in _assemble_build.
+    if dump['wrksrc'] and dump['wrksrc'] != _WRKSRC_SENTINEL:
+        raise Refuse('template sets wrksrc=%r; xbps-src resets it after '
+                     'sourcing, so no chy mapping exists (the honored '
+                     'knob is build_wrksrc)' % dump['wrksrc'])
 
     style = dump['build_style'] or 'NONE'
     if style not in _STYLES:

@@ -1607,6 +1607,57 @@ def case_48_files_carry_all():
     c.finish()
 
 
+def case_49_build_wrksrc():
+    # xbps-src's ch_wrksrc: configure/build/install (and their hooks)
+    # run inside build_wrksrc, a subdir of the extracted source root
+    # (xvidcore's build/generic, QXlsx's QXlsx); patches run at the
+    # root.  chy's work dir IS the source root after hoist, so the
+    # mapping is one cd line between post_patch and the configure
+    # stage.  Byte-exact.
+    c = Case("49-build-wrksrc")
+    c.names("xvc")
+    c.template("xvc", tmpl("xvc", lines=[
+        'build_wrksrc="build/generic"',
+    ]))
+    c.slice(E("xvc"))
+    c.expect("recipes/xvc/build",
+             '#!/bin/sh -e\n'
+             'cd build/generic || exit 1\n'
+             './configure \\\n'
+             '    --prefix="$CHY_PREFIX" \\\n'
+             '    --sysconfdir="$CHY_ROOT/etc"\n'
+             'make\n'
+             'make DESTDIR="$1" install\n')
+    c.checks(
+        "exit :: 0\n"
+        "file-line-n :: recipes/xvc/build :: 2 :: cd build/generic || exit 1\n"
+        "file-after :: recipes/xvc/build :: cd build/generic || exit 1 :: ./configure\n"
+        "file-count :: recipes/xvc/build :: cd :: 1\n"
+        "file-line :: recipes/xvc/meta :: style: gnu-configure\n"
+    )
+    c.finish()
+
+
+def case_50_refuse_template_wrksrc():
+    # a template-set wrksrc has no faithful chy mapping: xbps-src
+    # resets the variable after sourcing, so the value never takes
+    # effect upstream and there is no upstream behavior to map.
+    # Refuse per package, naming wrksrc.
+    c = Case("50-refuse-wrksrc")
+    c.names("wrq")
+    c.template("wrq", tmpl("wrq", lines=[
+        'wrksrc="${xbps_wrksrc}/source"',
+    ]))
+    c.slice(E("wrq"))
+    c.checks(
+        "exit :: 1\n"
+        "stderr-refusal :: wrq :: wrksrc\n"
+        "absent :: recipes/wrq\n"
+    )
+    c.finish()
+    c.finish()
+
+
 def main():
     fns = [fn for nm, fn in sorted(globals().items())
            if nm.startswith("case_") and callable(fn)]

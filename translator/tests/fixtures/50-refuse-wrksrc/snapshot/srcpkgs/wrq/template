@@ -1,0 +1,12 @@
+# Template file for 'wrq'
+pkgname=wrq
+version=1.0
+revision=1
+build_style=gnu-configure
+wrksrc="${xbps_wrksrc}/source"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/wrq"
+distfiles="https://example.org/dist/wrq-${version}.tar.gz"
+checksum=c82f4ff39f3d65ab420c073f801af4cf31f0120ccee7215e71a01969ecd4a630
