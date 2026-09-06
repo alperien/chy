@@ -25,9 +25,12 @@ assert_rc 0 'env exits 0 with a populated root'
 assert_empty_file "$ERR" 'env is silent on stderr'
 assert_eq "$(wc -l <"$OUT" | tr -d ' ')" '3' 'env prints exactly three lines'
 
-file_has_line "$OUT" 'export PATH="$CHY_ROOT/usr/bin${PATH:+:$PATH}"' # shellcheck disable=SC2016
-file_has_line "$OUT" 'export XDG_DATA_DIRS="$CHY_ROOT/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"' # shellcheck disable=SC2016
-file_has_line "$OUT" 'export MANPATH="$CHY_ROOT/usr/share/man${MANPATH:+:$MANPATH}"' # shellcheck disable=SC2016
+# shellcheck disable=SC2016
+file_has_line "$OUT" 'export PATH="$CHY_ROOT/usr/bin${PATH:+:$PATH}"'
+# shellcheck disable=SC2016
+file_has_line "$OUT" 'export XDG_DATA_DIRS="$CHY_ROOT/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"'
+# shellcheck disable=SC2016
+file_has_line "$OUT" 'export MANPATH="$CHY_ROOT/usr/share/man${MANPATH:+:$MANPATH}"'
 
 # --- the lines actually work when evaluated ---
 chmod 755 "$CHY_ROOT/usr/bin/envtool"   # mkpkg payloads are data; a real
