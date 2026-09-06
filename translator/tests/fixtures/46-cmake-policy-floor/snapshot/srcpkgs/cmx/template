@@ -1,0 +1,12 @@
+# Template file for 'cmx'
+pkgname=cmx
+version=1.0
+revision=1
+build_style=cmake
+configure_args="-DFOO=ON"
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/cmx"
+distfiles="https://example.org/dist/cmx-${version}.tar.gz"
+checksum=f6e802601b3090f53e77130224c28497641c3128c074a0c0268ebefeb3fbd54f
