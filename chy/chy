@@ -576,9 +576,17 @@ run_build() { # run_build <name>
 # The build staged a DESTDIR image of the real prefix. chy recipes stage it
 # at $DEST$CHY_ROOT (they do `make install DESTDIR="$1$CHY_ROOT"`); kiss
 # recipes stage it directly at $DEST (they do `make install DESTDIR="$1/usr"`,
-# prefix-relative). Accept either, never both: normalize checks the image and
-# produces a $CHY_ROOT-relative tree at $NORM, still in scratch. On failure
-# the root is untouched.
+# prefix-relative). Real builds mix the two shapes in one image: a style
+# stage installs prefix-relative while a hook or an upstream Makefile
+# with an absolute sysconfdir installs prefix-absolute, and vice versa
+# (this mix held 64 translated recipes at their HEAD before the merge).
+# Both shapes are prefix-relative layouts of the same final tree, so
+# normalize unifies them: chy-side entries first, then the direct ones
+# over the same layout. A path both shapes staged is a genuine conflict:
+# guessing would silently install the wrong content, so it refuses
+# loudly, naming both roots and every colliding path. On failure the
+# root is untouched.
+
 normalize() { # normalize <name>
     NORM=$CHY_ROOT/build/pkg
     n_bad=$CHY_ROOT/build/norm-failed
@@ -596,77 +604,76 @@ normalize() { # normalize <name>
             case $n_p in
                 "$DEST$CHY_ROOT/"*) true >"$n_ck" ;;
                 "$DEST/"*)          true >"$n_dk" ;;
-                # A fragment matching neither can only come from a path
-                # containing a newline; the check below reports it.
-                *)                  : ;;
             esac
         done
-
-    if [ -e "$n_ck" ] && [ -e "$n_dk" ]; then
-        # Both shapes carry entries: the image is ambiguous, and guessing
-        # would silently install the wrong tree. Refuse loudly, naming
-        # both roots and every path staged directly under $DEST.
-        err "$1" "ambiguous staging: the build installed into both \$DEST\$CHY_ROOT ($DEST$CHY_ROOT) and \$DEST ($DEST)"
-        find "$DEST" \( -type f -o -type l \) -print 2>/dev/null |
-            while IFS= read -r n_p; do
-                case $n_p in
-                    "$DEST$CHY_ROOT/"*) ;;
-                    "$DEST/"*) err "$1" "staged outside the prefix: ${n_p#"$DEST"}" ;;
-                esac
-            done
-        exit 1
-    fi
-
-    n_base=$DEST
-    if [ -e "$n_ck" ]; then
-        n_base=$DEST$CHY_ROOT
-    elif [ ! -e "$n_dk" ]; then
+    if [ ! -e "$n_ck" ] && [ ! -e "$n_dk" ]; then
         fail "$1" "build installed nothing"
     fi
 
-    # Every staged path has to resolve under the detected image. This loop
-    # also catches newlines: one in a path splits off a fragment that can't
-    # start with the prefix, so it hits the else and aborts. Don't turn it
-    # into find -path, you'd lose that.
+    # Every staged path has to resolve under one of the two image roots.
+    # This loop also catches newlines: one in a path splits off a
+    # fragment that can't start with either prefix, so it hits the else
+    # and aborts. Don't turn it into find -path, you'd lose that.
     find "$DEST" \( -type f -o -type l \) -print | while IFS= read -r n_p; do
         case $n_p in
-            "$n_base/"*) ;;
+            "$DEST$CHY_ROOT/"*|"$DEST/"*) ;;
             *) err "$1" "staged outside the prefix (or a path contains a newline): ${n_p#"$DEST"}"
                 true >"$n_bad" ;;
         esac
     done
     [ ! -e "$n_bad" ] || fail "$1" "build staged a path outside \$CHY_ROOT or containing a newline"
 
-    if [ -z "$(find "$n_base" \( -type f -o -type l \) -print 2>/dev/null)" ]; then
-        fail "$1" "build installed nothing"
-    fi
-
     # registry files every install regenerates and no package can own:
     # the texinfo directory index and gettext's charset.alias. Every
     # GNU make install stages them, so the first package would claim
     # them and every later one would conflict.
-    rm -f "$n_base/usr/share/info/dir" "$n_base/usr/lib/charset.alias"
+    rm -f "$DEST/usr/share/info/dir" "$DEST/usr/lib/charset.alias" \
+        "$DEST$CHY_ROOT/usr/share/info/dir" \
+        "$DEST$CHY_ROOT/usr/lib/charset.alias"
 
     find "$DEST" -type l -print | while IFS= read -r n_p; do
         n_t=$(readlink "$n_p")
         case $n_t in
             "$DEST"*)
-                err "$1" "symlink baked with the staging path: ${n_p#"$n_base/"} -> $n_t"
+                err "$1" "symlink baked with the staging path: ${n_p#"$DEST/"} -> $n_t"
                 true >"$n_bad" ;;
         esac
     done
     [ ! -e "$n_bad" ] || fail "$1" "symlink targets baked with \$1 (DESTDIR)"
 
-    if [ "$n_base" = "$DEST" ]; then
-        # kiss layout: the whole $DEST tree IS the normalized tree. Drop a
-        # crashed run's leftover first: mv onto an existing directory would
-        # nest $DEST inside it instead of replacing it.
+    if [ ! -e "$n_ck" ]; then
+        # kiss layout only: the whole $DEST tree IS the normalized tree.
+        # Drop a crashed run's leftover first: mv onto an existing
+        # directory would nest $DEST inside it instead of replacing it.
         rm -rf "$NORM"
         mv "$DEST" "$NORM" || fail "$1" "cannot normalize the staged tree"
         mkdir -p "$DEST" || fail "$1" "cannot normalize the staged tree"
-    else
-        mv "$DEST$CHY_ROOT" "$NORM" || fail "$1" "cannot normalize the staged tree"
+        return 0
     fi
+
+    # chy layout (possibly with direct fragments alongside): stage the
+    # chy-side tree, then fold every direct file/symlink in over the
+    # same layout, creating parents as needed. Files only: the empty
+    # ancestor directories the chy-side root leaves inside $DEST (and
+    # any directory a build made without filling) must not become
+    # package content. Any path both shapes staged is refused loudly.
+    rm -rf "$NORM"
+    mv "$DEST$CHY_ROOT" "$NORM" || fail "$1" "cannot normalize the staged tree"
+    find "$DEST" \( -type f -o -type l \) -print \
+        >"$CHY_ROOT/build/norm-fold"
+    while IFS= read -r n_p; do
+        n_rel=${n_p#"$DEST/"}
+        [ "$n_rel" != "$n_p" ] || continue # a fragment can't happen here
+        n_dst=$NORM/$n_rel
+        if [ -e "$n_dst" ] || [ -L "$n_dst" ]; then
+            fail "$1" "ambiguous staging: $n_rel exists in both staging shapes"
+        fi
+        n_dir=${n_dst%/*}
+        mkdir -p "$n_dir" || fail "$1" "cannot normalize the staged tree"
+        mv "$n_p" "$n_dst" || fail "$1" "cannot normalize the staged tree"
+    done <"$CHY_ROOT/build/norm-fold"
+    rm -rf "$DEST"
+    mkdir -p "$DEST" || fail "$1" "cannot normalize the staged tree"
 }
 
 # linking

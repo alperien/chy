@@ -25,21 +25,23 @@ rootfirst=${CHY_ROOT#/}
 rootfirst=${rootfirst%%/*}
 assert_absent "$CHY_ROOT/store/norm-1.0/$rootfirst"
 
-# --- files or symlinks staged outside $1$CHY_ROOT: error, listed ---
+# --- a path staged in BOTH shapes: collision, error, listed ---
+# (a direct fragment that doesn't collide now merges — tests/240 covers
+# the merge; what stays refused is the same path from both roots)
 mkpkg "$CHY_ROOT" rogue 1.0
 cat >"$CHY_ROOT/recipes/rogue/build" <<'EOF'
 set -eu
-mkdir -p "$1$CHY_ROOT/usr/bin" "$1/rogue-dir"
+mkdir -p "$1$CHY_ROOT/usr/bin" "$1/usr/bin"
 printf 'ok\n' >"$1$CHY_ROOT/usr/bin/rogue-tool"
-printf 'r\n' >"$1/rogue-dir/rogue-file"
-ln -s /nowhere "$1/rogue-link"
+printf 'r\n' >"$1/usr/bin/rogue-tool"
+ln -s /nowhere "$1/usr/bin/rogue-link"
 EOF
 snap0=$(snap "$CHY_ROOT")
 run_chy install rogue
-assert_rc 1 'staging outside the DESTDIR root image fails'
-file_has "$ERR" 'rogue-file'
-file_has "$ERR" 'rogue-link'
-assert_eq "$(snap "$CHY_ROOT")" "$snap0" 'root untouched by rogue staging'
+assert_rc 1 'a path both staging shapes wrote is refused'
+file_has "$ERR" 'ambiguous staging'
+file_has "$ERR" 'rogue-tool'
+assert_eq "$(snap "$CHY_ROOT")" "$snap0" 'root untouched by the collision'
 assert_not_installed "$CHY_ROOT" rogue
 assert_absent "$CHY_ROOT/usr/bin/rogue-tool"
 
