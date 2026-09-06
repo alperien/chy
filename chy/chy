@@ -1818,6 +1818,9 @@ cmd_doctor() {
 # root that has no bin dir yet, so a profile is silent until the first
 # install.
 cmd_env() {
+    # shellcheck disable=SC2016  # the single-quoted ${VAR:+...} text IS
+    # the output: the expansion must happen in the reader's shell, at
+    # eval time, not here.
     [ "$#" -eq 0 ] || { usage >&2; exit 2; }
     [ -d "$CHY_ROOT" ] || return 0
     [ -x "$CHY_ROOT/usr/bin" ] || return 0
