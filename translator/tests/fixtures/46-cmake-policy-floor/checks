@@ -1,0 +1,6 @@
+exit :: 0
+file-line :: recipes/cmx/meta :: style: cmake
+file-matches :: recipes/cmx/build :: ^    -DCMAKE_POLICY_VERSION_MINIMUM=3\.5 \\$
+file-after :: recipes/cmx/build :: -DCMAKE_BUILD_TYPE=Release :: -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+file-line :: recipes/cmx/makedepends :: cmake
+file-not-has :: recipes/gnx/build :: CMAKE_POLICY_VERSION_MINIMUM

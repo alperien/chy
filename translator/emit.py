@@ -818,8 +818,13 @@ def _style_stages(style, dump, cfg_args):
                 ['DESTDIR="$1" ninja -C build install'])
 
     if style == 'cmake':
+        # CMake >= 3.31 removed compatibility with cmake_minimum_required
+        # below 3.5, which killed 52 held recipes on old upstreams.  The
+        # flag is the remedy CMake itself names in that error: it floors
+        # the policies at 3.5 without touching the project's version.
         emitter = ['-DCMAKE_INSTALL_PREFIX="$CHY_PREFIX"',
-                   '-DCMAKE_BUILD_TYPE=Release']
+                   '-DCMAKE_BUILD_TYPE=Release',
+                   '-DCMAKE_POLICY_VERSION_MINIMUM=3.5']
         args = emitter + [a for a in cfg_args if a not in emitter]
         return (_emit_command(['cmake', '-G', 'Ninja', '-B', 'build'], args),
                 ['ninja -C build'],

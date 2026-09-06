@@ -1501,6 +1501,40 @@ def case_45_dropped_loud():
     c.finish()
 
 
+def case_46_cmake_policy_floor():
+    # CMake >= 3.31 removed compatibility with cmake_minimum_required
+    # below 3.5 (52 held recipes).  The cmake style carries the floor
+    # flag CMake itself names as the remedy; a gnu-configure sibling
+    # proves it lands nowhere else.
+    c = Case("46-cmake-policy-floor")
+    c.names("cmx", "gnx")
+    c.template("cmx", tmpl("cmx", style="cmake", lines=[
+        'configure_args="-DFOO=ON"',
+    ]))
+    c.template("gnx", tmpl("gnx"))
+    c.slice(E("cmx"), E("gnx"), E("cmake"), E("ninja"))
+    c.expect("recipes/cmx/build",
+             '#!/bin/sh -e\n'
+             'cmake -G Ninja -B build \\\n'
+             '    -DCMAKE_INSTALL_PREFIX="$CHY_PREFIX" \\\n'
+             '    -DCMAKE_BUILD_TYPE=Release \\\n'
+             '    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \\\n'
+             '    -DFOO=ON\n'
+             'ninja -C build\n'
+             'DESTDIR="$1" ninja -C build install\n')
+    c.checks(
+        "exit :: 0\n"
+        "file-line :: recipes/cmx/meta :: style: cmake\n"
+        "file-matches :: recipes/cmx/build :: "
+        "^    -DCMAKE_POLICY_VERSION_MINIMUM=3\\.5 \\\\$\n"
+        "file-after :: recipes/cmx/build :: -DCMAKE_BUILD_TYPE=Release :: "
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5\n"
+        "file-line :: recipes/cmx/makedepends :: cmake\n"
+        "file-not-has :: recipes/gnx/build :: CMAKE_POLICY_VERSION_MINIMUM\n"
+    )
+    c.finish()
+
+
 def main():
     fns = [fn for nm, fn in sorted(globals().items())
            if nm.startswith("case_") and callable(fn)]
