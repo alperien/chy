@@ -33,7 +33,7 @@
 #   <dump-out-dir>   parent directory; on success <dump-out-dir>/<pkgname>/
 #                    is (re)created with:
 #                      vars        one "key<TAB>value" per line, value escapes
-# \t \n \\; all 20 keys always present
+# \t \n \\; all 22 keys always present
 #                      options     resolved build options, "name=0|1" per line
 #                      functions/ one file per defined do_*/pre_*/post_*/
 #                                  *_package function, body verbatim
@@ -103,6 +103,7 @@ setup_xbps_env() {
         checksum hostmakedepends makedepends depends conflicts \
         configure_args make_build_args make_install_args \
         make_build_target make_install_target conf_files system_accounts \
+        wrksrc build_wrksrc \
         build_options build_options_default subpackages \
         CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
     local _leaked
@@ -119,7 +120,10 @@ setup_xbps_env() {
     CROSS_BUILD=""                XBPS_CROSS_BASE=""
     XBPS_MAKEJOBS=""              makejobs=""
     sourcepkg=""
-    # harmless sentinels; only ever read at source time, never used as paths
+    # harmless sentinels; only ever read at source time, never used as
+    # paths.  wrksrc's sentinel is the emit-side 'not set' marker: a
+    # template never touched it, and xbps-src resets the real var after
+    # sourcing anyway.
     FILESDIR="/xbps-stub/files"   DESTDIR="/xbps-stub/destdir"
     wrksrc="/xbps-stub/wrksrc"    PKGDESTDIR="/xbps-stub/pkgdestdir"
     # distfile mirror macros, real URLs per common/environment/setup/misc.sh
@@ -299,15 +303,16 @@ done
     esac
 
     _pkgdump="$STAGE/$pkgname"
+    # vars: the 22 pinned keys, always present, fixed order
+
     "$MKDIR" -p "$_pkgdump/functions" || exit 91
 
-    # vars: the 20 pinned keys, always present, fixed order
     {
         for _key in pkgname version revision build_style build_helper \
             distfiles checksum hostmakedepends makedepends depends \
             conflicts configure_args make_build_args make_install_args \
             make_build_target make_install_target conf_files \
-            system_accounts patch_args; do
+            system_accounts patch_args wrksrc build_wrksrc; do
             _esc "${!_key-}"
             printf '%s\t%s\n' "$_key" "$_esc_out"
         done
