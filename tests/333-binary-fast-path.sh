@@ -39,7 +39,7 @@ file_has_line "$CHY_ROOT/db/installed/bfast/manifest" 'usr/bin/bintool'
 # --- archive is the layout (a gate-built image always carries usr/ at
 # --- the root; a nested one is visible in the manifest, not silently
 # --- flattened)
-rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "$CHY_ROOT/usr" "$CHY_ROOT/log"
+rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "${CHY_ROOT:?}/usr" "$CHY_ROOT/log"
 mkdir -p "$TMPD/nest/binsample-1.0/usr/bin"
 printf 'nested\n' >"$TMPD/nest/binsample-1.0/usr/bin/bintool"
 tar -C "$TMPD/nest" -czf "$TMPD/binsample.tar.gz" binsample-1.0
@@ -53,7 +53,7 @@ assert_eq "$(cat "$CHY_ROOT/store/bfast-1.0/binsample-1.0/usr/bin/bintool")" \
 assert_absent "$CHY_ROOT/usr/bin/bintool"
 
 # --- refusals: wrong shape in every direction ---
-rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "$CHY_ROOT/usr" "$CHY_ROOT/log" \
+rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "${CHY_ROOT:?}/usr" "$CHY_ROOT/log" \
     "$CHY_ROOT/binsample-1.0"
 printf 'plain file, not an archive\n' >"$TMPD/plain.txt"
 plain_sum=$(sha_of "$TMPD/plain.txt")
@@ -82,7 +82,7 @@ assert_not_installed "$CHY_ROOT" bfast
 file_matches "$ERR" "not an archive"
 
 # --- kind binary WITH a build file still runs the build (tests/600 shape) ---
-rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "$CHY_ROOT/usr" "$CHY_ROOT/log"
+rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "${CHY_ROOT:?}/usr" "$CHY_ROOT/log"
 mkpkg "$CHY_ROOT" bscript 1.0 usr/bin/bscript
 printf 'binary\n' >"$CHY_ROOT/recipes/bscript/kind"
 run_chy install bscript

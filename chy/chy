@@ -1102,7 +1102,7 @@ prepare_binary() { # prepare_binary <name>
     pb_file=$(first_field "$pb_line")
     pb_file=${pb_file##*/}
     pb_rest=
-    read -r pb_url pb_rest <<EOF
+    read -r _pb_url pb_rest <<EOF
 $pb_line
 EOF
     case $pb_file in
