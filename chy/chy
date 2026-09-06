@@ -181,6 +181,22 @@ provided_names() { # db/provided names: sorted, de-duplicated
     list_names "$CHY_ROOT/db/provided" | LC_ALL=C sort -u
 }
 
+# Union the repo's suggested host names into db/provided so the file can
+# never go stale against the repo. The suggested file sits beside
+# recipes/ (same `recipes/../` path check_min_chy uses); no repo there
+# means nothing to seed. User names survive: the union only ever adds,
+# and an equal sorted set means steady state, so nothing is rewritten.
+seed_provided() {
+    sp_sug=$CHY_ROOT/recipes/../provided.suggested
+    [ -f "$sp_sug" ] && [ -r "$sp_sug" ] || return 0
+    sp_old=$(provided_names)
+    sp_new=$( { [ -n "$sp_old" ] && printf '%s\n' "$sp_old"
+                list_names "$sp_sug"; } | LC_ALL=C sort -u)
+    [ "$sp_new" = "$sp_old" ] && return 0
+    mkdir -p "$CHY_ROOT/db" || return 0
+    printf '%s\n' "$sp_new" >"$CHY_ROOT/db/provided"
+}
+
 installed_names() { # entries under db/installed, byte-sorted
     for il_d in "$CHY_ROOT/db/installed/"*; do    # a dir here means installed
         [ -d "$il_d" ] || continue
@@ -1378,6 +1394,7 @@ cmd_install() {
     if [ "${1-}" = --no-deps ]; then ci_nodeps=1; shift; fi
     [ "$#" -gt 0 ] || { usage >&2; exit 2; }
     check_min_chy
+    seed_provided
 
     # Resolution step 1: duplicates collapse (first occurrence wins). A
     # requested name the host provides is skipped with a warning. No
@@ -1857,6 +1874,7 @@ upgrade_run() { # upgrade_run <ordered names>
 cmd_upgrade() {
     no_opts "$@"
     check_min_chy
+    seed_provided
     PROVIDED=" $(provided_names | tr '\n' ' ')"
 
     CU_T=' ' cu_names=''
