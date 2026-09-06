@@ -1,0 +1,7 @@
+exit :: 0
+file-count :: recipes/nvh/sources :: :// :: 2
+file-matches-n :: recipes/nvh/sources :: 1 :: ^https://example\.org/dist/nvh-1\.0\.tar\.gz https://sources\.voidlinux\.org/nvh-1\.0/nvh-1\.0\.tar\.gz$
+file-matches-n :: recipes/nvh/sources :: 2 :: ^https://raw\.githubusercontent\.com/.*1234567890abcdef1234567890abcdef12345678/srcpkgs/nvh/files/LICENSE$
+file-line-n :: recipes/nvh/checksums :: 1 :: 9f2417c0dde8f0f23cfcbce123933522cc4d331ab076cc6481312915a3f35c7e
+file-line-n :: recipes/nvh/checksums :: 2 :: 66b9addde369d8e88d711151f5ba5f152858a69ace3a050e287b081cf87db94b
+file-not-has :: recipes/nvh/build :: LICENSE

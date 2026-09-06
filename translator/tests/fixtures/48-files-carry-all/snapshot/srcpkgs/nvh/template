@@ -1,0 +1,11 @@
+# Template file for 'nvh'
+pkgname=nvh
+version=1.0
+revision=1
+build_style=gnu-makefile
+short_desc="Synthetic chytrans fixture"
+maintainer="chytrans tests <noreply@example.org>"
+license="MIT"
+homepage="https://example.org/nvh"
+distfiles="https://example.org/dist/nvh-${version}.tar.gz"
+checksum=9f2417c0dde8f0f23cfcbce123933522cc4d331ab076cc6481312915a3f35c7e
