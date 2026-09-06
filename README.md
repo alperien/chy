@@ -17,11 +17,17 @@ of all options.
     mkdir -p "$CHY_ROOT" && ln -s "$PWD/chy-recipes/recipes" "$CHY_ROOT/recipes"
     cp chy-recipes/shlibs.map "$CHY_ROOT/shlibs.map"
     sh chy/chy install freetype
+    eval "$(sh chy/chy env)"          # add to your profile; prints nothing
+                                      # until the root has a bin dir
 
     the db/provided file lists library and tool names the host system
     already supplies, so chy skips building recipes that would only
     duplicate them. install seeds it automatically from the repo's
     provided.suggested.
+
+    recipes carrying `kind binary` and no build file install their single
+    checksummed archive directly: the tarball IS the package, layout and
+    all, and the digest in the recipe is the whole trust surface.
 
 ##
 
