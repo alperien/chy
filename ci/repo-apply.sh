@@ -10,13 +10,16 @@
 #
 # commit.msg present: commit the staged index as github-actions[bot],
 # push HEAD:main, then close any open `repo-sync: refused: <name>` or
-# `repo-sync: build failed: <name>` whose package the new report shows
-# translated (auto-close rides a push because a fixed package re-emits
-# its recipe, which moves the repo, the byte-identical corner waits for
-# the next real commit). issues/*.md present: open-or-update by exact
-# title, the dedup key. An unchanged reason-hash marker stays silent, a
-# changed one posts one comment and refreshes the body so the marker
-# tracks the live reason. Neither: nothing to do, zero gh calls.
+# `repo-sync: build failed: <name>` whose package the pushed commit
+# actually carries: the name is in the commit's recipes/ diff and
+# today's decisions hold no issue file for it (auto-close rides a push
+# because a fixed package re-emits its recipe, which moves the repo).
+# A sweep closes open build failures for names gone from default.set
+# (refused: issues stay: a vanished name genuinely lost its recipe).
+# issues/*.md present: open-or-update by exact title, the dedup key. An
+# unchanged reason-hash marker stays silent, a changed one posts one
+# comment and refreshes the body so the marker tracks the live reason.
+# Neither: nothing to do, zero gh calls.
 #
 # --gh names a single command (a stub in the dry-run tests, default gh).
 set -eu
@@ -78,8 +81,11 @@ work=$(mktemp -d) || die 'mktemp -d failed'
 trap 'rm -rf "$work"' EXIT INT TERM
 tab=$(printf '\t')
 
-# one listing serves dedup and auto-close: number, reason-hash (or -), title
-"$gh" issue list --repo "$issue_repo" --state open --limit 200 \
+# one listing serves dedup, auto-close, and the sweep: number,
+# reason-hash (or -), title. The cap has to clear every open issue or
+# the sweep can't see (and close) what it lists; gh rejects limits
+# below 1, so this is a large finite number, not unlimited.
+"$gh" issue list --repo "$issue_repo" --state open --limit 10000 \
     --json number,title,body >"$work/issues.json"
 python3 -c '
 import json, re, sys
@@ -129,13 +135,21 @@ for f in "$decisions/issues"/*.md; do
     fi
 done
 
-# auto-close after a push: an open refusal or build failure whose
-# package the freshly committed report shows translated is fixed. A
-# gate-held name also reads "translated" in the pushed report while its
-# recipe didn't land, so any name with a build issue in TODAY's
-# decisions is skipped, its hold is the live state, not a fix.
+# --- closing what this run resolves ---
+#
+# A name ships when the pushed commit's recipes/ diff carries it (added
+# or changed, still present in the tree; --diff-filter=ACM drops
+# prunes). An open refusal or build failure for a shipped name is
+# stale: the fix rode the push. A name with an issue file in TODAY's
+# decisions is live state, not a fix, even if the diff carries it, so
+# it stays open. Every close is best-effort: the push already
+# happened, a failed close only warns.
 if [ "$pushed" -eq 1 ]; then
-    [ -f "$repo/report" ] || die "no report in $repo after a push"
+    git -C "$repo" diff-tree -r --no-commit-id --no-renames \
+        --name-only --diff-filter=ACM HEAD -- recipes/ \
+        >"$work/shipped.raw" 2>/dev/null || : >"$work/shipped.raw"
+    sed -n 's|^recipes/\([^/][^/]*\)/.*|\1|p' "$work/shipped.raw" \
+        | LC_ALL=C sort -u >"$work/shipped"
     while IFS=$tab read -r num _ title; do
         case $title in
             'repo-sync: refused: '*) name=${title#repo-sync: refused: } ;;
@@ -144,10 +158,49 @@ if [ "$pushed" -eq 1 ]; then
             *) continue ;;
         esac
         [ ! -f "$decisions/issues/build-$name.md" ] || continue
-        grep -Fqx "translated: $name" "$repo/report" || continue
-        "$gh" issue close "$num" --repo "$issue_repo" \
-            --comment "repo-sync: $name translated cleanly again; closing."
-        say "closed: $title"
+        [ ! -f "$decisions/issues/refused-$name.md" ] || continue
+        grep -Fqx "$name" "$work/shipped" || continue
+        if "$gh" issue close "$num" --repo "$issue_repo" \
+            --comment "repo-sync: $name shipped in this push; closing."; then
+            say "closed: $title"
+        else
+            say "warn: close failed: $title"
+        fi
+    done <"$work/issues.tsv"
+fi
+
+# The stale sweep: a build failure for a name no longer in the set can
+# never resolve (the sync stopped translating it) and only drowns the
+# tracker. default.set rides the chy checkout next to ci/; no file, no
+# sweep. Names the ship loop above already handled, or that today's
+# decisions still hold, are left alone.
+set_file=$(dirname "$0")/../default.set
+if [ -f "$set_file" ]; then
+    set_names=' '
+    set -f
+    while IFS= read -r line; do
+        case $line in ''|'#'*) continue ;; esac
+        # shellcheck disable=SC2086 # splitting the line into names is the point
+        for sn in $line; do set_names="$set_names$sn "; done
+    done <"$set_file"
+    set +f
+    while IFS=$tab read -r num _ title; do
+        case $title in
+            'repo-sync: build failed: '*)
+                name=${title#repo-sync: build failed: } ;;
+            *) continue ;;
+        esac
+        [ ! -f "$decisions/issues/build-$name.md" ] || continue
+        case $set_names in *" $name "*) continue ;; esac
+        if [ "$pushed" -eq 1 ] && grep -Fqx "$name" "$work/shipped"; then
+            continue # the ship loop above already closed it
+        fi
+        if "$gh" issue close "$num" --repo "$issue_repo" \
+            --comment "repo-sync: $name is no longer in default.set; closing."; then
+            say "swept: $title"
+        else
+            say "warn: sweep close failed: $title"
+        fi
     done <"$work/issues.tsv"
 fi
 exit 0
