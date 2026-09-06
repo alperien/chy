@@ -19,6 +19,9 @@
 # issues/*.md present: open-or-update by exact title, the dedup key. An
 # unchanged reason-hash marker stays silent, a changed one posts one
 # comment and refreshes the body so the marker tracks the live reason.
+# Duplicates of a filed title are legacy noise from the old capped
+# listing: every open issue with the same title but the kept one is
+# closed with a duplicate comment, best-effort.
 # Neither: nothing to do, zero gh calls.
 #
 # --gh names a single command (a stub in the dry-run tests, default gh).
@@ -104,6 +107,22 @@ issue_row() { # TITLE - print "number hash" of the open issue, or fail
     return 1
 }
 
+# dedup_close TITLE KEPT - close every open issue with TITLE whose
+# number differs from KEPT ("num hash"). Legacy duplicates from the
+# old capped listing; best-effort, a failed close only warns.
+dedup_close() {
+    while IFS=$tab read -r dc_num _ dc_title; do
+        [ "$dc_title" = "$1" ] || continue
+        [ "$dc_num" != "${2%% *}" ] || continue
+        if "$gh" issue close "$dc_num" --repo "$issue_repo" \
+            --comment "repo-sync: duplicate of #${2%% *}; closing."; then
+            say "closed duplicate: $1"
+        else
+            say "warn: duplicate close failed: $1"
+        fi
+    done <"$work/issues.tsv"
+}
+
 for f in "$decisions/issues"/*.md; do
     [ -f "$f" ] || continue
     base=${f##*/}
@@ -127,11 +146,13 @@ for f in "$decisions/issues"/*.md; do
         say "opened: $title"
     elif [ "${row#* }" = "$want" ]; then
         say "already open, reason unchanged: $title"
+        dedup_close "$title" "$row"
     else
         num=${row%% *}
         "$gh" issue comment "$num" --repo "$issue_repo" --body-file "$f"
         "$gh" issue edit "$num" --repo "$issue_repo" --body-file "$f"
         say "reason changed, commented: $title"
+        dedup_close "$title" "$row"
     fi
 done
 
