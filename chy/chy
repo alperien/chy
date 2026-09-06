@@ -583,8 +583,8 @@ run_build() { # run_build <name>
 # Both shapes are prefix-relative layouts of the same final tree, so
 # normalize unifies them: chy-side entries first, then the direct ones
 # over the same layout. A path both shapes staged is a genuine conflict:
-# guessing would silently install the wrong content, so it refuses
-# loudly, naming both roots and every colliding path. On failure the
+# guessing would silently install the wrong content, so it refuses at
+# the first such path, naming only that path. On failure the
 # root is untouched.
 
 normalize() { # normalize <name>
