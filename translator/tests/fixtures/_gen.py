@@ -1574,6 +1574,39 @@ def case_47_refuse_bare_prefix():
     c.finish()
 
 
+
+def case_48_files_carry_all():
+    # upstream Makefiles sed/copy files/ content Void ships alongside
+    # the template (nv-codec-headers' post_install generates LICENSE,
+    # libdrm's seds it out of a source header; the Makefile's own rule
+    # copies it). A files/ directory in the srcpkg tree now carries
+    # every file into sources, hook or no hook; the checksums pair.
+    # A hook-referenced asset (case 18) keeps flowing through the same
+    # machinery.
+    c = Case("48-files-carry-all")
+    license_text = "MIT License\n\nCopyright (c) synthetic\n"
+    license_sha = hashlib.sha256(license_text.encode()).hexdigest()
+    c.names("nvh")
+    c.template("nvh", tmpl("nvh", style="gnu-makefile"))
+    c.files_asset("nvh", "LICENSE", license_text)
+    c.slice(E("nvh"))
+    c.checks(
+        "exit :: 0\n"
+        "file-count :: recipes/nvh/sources :: :// :: 2\n"
+        "file-matches-n :: recipes/nvh/sources :: 1 :: "
+        r"^https://example\.org/dist/nvh-1\.0\.tar\.gz"
+        r" https://sources\.voidlinux\.org/nvh-1\.0/nvh-1\.0\.tar\.gz$" "\n"
+        "file-matches-n :: recipes/nvh/sources :: 2 :: "
+        r"^https://raw\.githubusercontent\.com/.*" + COMMIT +
+        r"/srcpkgs/nvh/files/LICENSE$" "\n"
+        "file-line-n :: recipes/nvh/checksums :: 1 :: "
+        + fake_sha("nvh-1.0.tar.gz") + "\n"
+        "file-line-n :: recipes/nvh/checksums :: 2 :: " + license_sha + "\n"
+        "file-not-has :: recipes/nvh/build :: LICENSE\n"
+    )
+    c.finish()
+
+
 def main():
     fns = [fn for nm, fn in sorted(globals().items())
            if nm.startswith("case_") and callable(fn)]

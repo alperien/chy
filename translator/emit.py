@@ -933,12 +933,44 @@ _PINS = {
 _ARCHIVE_SUFFIXES = ('.tar.gz', '.tgz', '.tar.xz', '.tar.bz2')
 _VOID_RAW = 'https://raw.githubusercontent.com/void-linux/void-packages'
 _SHA256_RE = re.compile(r'^[0-9a-f]{64}$')
+def _files_assets(srcdir, name, assets):
+    """files/ relpaths the recipe needs: every file in the snapshot's
+    srcpkg tree, plus hook-referenced ones (validated against the tree
+    in _asset_digest).  Upstream Makefiles sed/copy files/ content Void
+    ships alongside the template (nv-codec-headers' LICENSE), so a
+    hook-less tree must still carry the files into the build dir."""
+    rels = set(assets)
+    if srcdir is not None:
+        root = os.path.join(srcdir, 'files')
+        if os.path.isdir(root):
+            for dirpath, _dirnames, filenames in os.walk(root):
+                for fn in filenames:
+                    rels.add(os.path.relpath(os.path.join(dirpath, fn),
+                                             root))
+    return sorted(rels)
+
+
+def _asset_digest(srcdir, name, rel):
+    """sha256 of one files/ asset, validating shape on the way."""
+    path = os.path.join(srcdir, 'files', rel)
+    if os.path.isdir(path):
+        raise Refuse('files/%s is a directory; not translatable as a '
+                     'source' % rel)
+    if not os.path.isfile(path):
+        raise Refuse('files/%s, absent from the fetched tree' % rel)
+    low = rel.lower()
+    if any(low.endswith(s) for s in _ARCHIVE_SUFFIXES):
+        raise Refuse('files/%s has a recognized-archive suffix; the build '
+                     'would extract it' % rel)
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
 def _sources_and_checksums(name, version, dump, assets, srcdir, commit):
     """-> (source lines, checksum lines).  Distfiles first, each with the
-    sources.voidlinux.org mirror appended; then files/ assets referenced by
-    surviving class-A lines, byte-sorted, raw URL at the pinned commit."""
+    sources.voidlinux.org mirror appended; then files/ assets the recipe
+    needs (every file in the srcpkg tree plus hook-referenced ones),
+    byte-sorted, raw URL at the pinned commit."""
     distfiles = dump['distfiles'].split()
     checksums = dump['checksum'].split()
     if not distfiles:
@@ -962,23 +994,11 @@ def _sources_and_checksums(name, version, dump, assets, srcdir, commit):
                   % (name, version, fname))
         src_lines.append('%s %s' % (url, mirror))
         sum_lines.append(digest)
-    for rel in sorted(assets):
+    for rel in _files_assets(srcdir, name, assets):
         if srcdir is None:
-            raise Refuse('hook references files/%s but the snapshot has no '
-                         'srcpkgs/%s tree' % (rel, name))
-        path = os.path.join(srcdir, 'files', rel)
-        if os.path.isdir(path):
-            raise Refuse('files/%s is a directory; not translatable as a '
-                         'source' % rel)
-        if not os.path.isfile(path):
-            raise Refuse('hook references files/%s, absent from the fetched '
-                         'tree' % rel)
-        low = rel.lower()
-        if any(low.endswith(s) for s in _ARCHIVE_SUFFIXES):
-            raise Refuse('files/%s has a recognized-archive suffix; the build '
-                         'would extract it' % rel)
-        with open(path, 'rb') as f:
-            digest = hashlib.sha256(f.read()).hexdigest()
+            raise Refuse('files asset %s needs srcpkgs/%s but the snapshot '
+                         'has no tree for it' % (rel, name))
+        digest = _asset_digest(srcdir, name, rel)
         # no void mirror: sources.voidlinux.org hosts distfiles only
         src_lines.append('%s/%s/srcpkgs/%s/files/%s'
                          % (_VOID_RAW, commit, name, rel))
