@@ -83,11 +83,11 @@ jobs:
             # column-1 provided.suggested installs the boost metapackage
             # without headers, and nothing pulls setcap for meson installs
             xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 \
-              boost-devel libcap-utils \
+              boost-devel libcap-progs \
               $(grep -v "^#" tests/acceptance-hostpkgs | tr "\n" " ") \
               || { xbps-install -Syu xbps \
                    && xbps-install -Sy git ca-certificates curl patch gcc make pkg-config xz python3 \
-                        boost-devel libcap-utils \
+                        boost-devel libcap-progs \
                         $(grep -v "^#" tests/acceptance-hostpkgs | tr "\n" " "); }
             # host stand-ins the staged repo itself names; tolerated here,
             # a genuinely missing tool surfaces as a named build failure
