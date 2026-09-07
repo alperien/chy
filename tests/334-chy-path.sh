@@ -19,12 +19,12 @@ mkdir -p "$TMPD/extra_repo/dual" "$TMPD/extra_repo/only"
 printf '2.0\n' >"$TMPD/extra_repo/dual/version"
 printf 'file://%s/seed-dual.txt\n' "$TMPD" >"$TMPD/extra_repo/dual/sources"
 sha_of "$TMPD/seed-dual.txt" >"$TMPD/extra_repo/dual/checksums"
-printf 'set -eu\nmkdir -p "$1$CHY_ROOT/usr/bin"\nprintf extra >"$1$CHY_ROOT/usr/bin/dual"\n' \
+printf "set -eu\nmkdir -p \"\$1\$CHY_ROOT/usr/bin\"\nprintf extra >\"\$1\$CHY_ROOT/usr/bin/dual\"\n" \
     >"$TMPD/extra_repo/dual/build"
 printf '3.0\n' >"$TMPD/extra_repo/only/version"
 printf 'file://%s/seed-only.txt\n' "$TMPD" >"$TMPD/extra_repo/only/sources"
 sha_of "$TMPD/seed-only.txt" >"$TMPD/extra_repo/only/checksums"
-printf 'set -eu\nmkdir -p "$1$CHY_ROOT/usr/bin"\nprintf x >"$1$CHY_ROOT/usr/bin/onlytool"\n' \
+printf "set -eu\nmkdir -p \"\$1\$CHY_ROOT/usr/bin\"\nprintf x >\"\$1\$CHY_ROOT/usr/bin/onlytool\"\n" \
     >"$TMPD/extra_repo/only/build"
 
 # --- an extra-repo package installs, resolving through the path ---
@@ -34,7 +34,7 @@ assert_installed "$CHY_ROOT" only 3.0 1
 assert_link "$CHY_ROOT/usr/bin/onlytool" '../../store/only/usr/bin/onlytool'
 
 # --- earlier path entries shadow the default repo ---
-rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "$CHY_ROOT/usr" "$CHY_ROOT/log"
+rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "${CHY_ROOT:?}/usr" "$CHY_ROOT/log"
 CHY_PATH="$TMPD/extra_repo" run_chy install dual
 assert_rc 0 'shadowing install must succeed'
 assert_installed "$CHY_ROOT" dual 2.0 1
@@ -42,7 +42,7 @@ assert_eq "$(cat "$CHY_ROOT/usr/bin/dual")" 'extra' \
     'the CHY_PATH repo won over the default repo'
 
 # --- reversed order hands the win back to the default repo ---
-rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "$CHY_ROOT/usr" "$CHY_ROOT/log"
+rm -rf "$CHY_ROOT/store" "$CHY_ROOT/db" "${CHY_ROOT:?}/usr" "$CHY_ROOT/log"
 CHY_PATH="" run_chy install dual
 assert_rc 0 'default-repo install must succeed'
 assert_installed "$CHY_ROOT" dual 1.0 1
