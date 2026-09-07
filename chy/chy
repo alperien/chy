@@ -44,7 +44,10 @@ usage:
   chy why name...       explain why a package is installed
   chy env               print shell exports for the root, for eval in a profile
 
-\$CHY_ROOT selects the root (default: \$HOME/.chy).
+\$CHY_ROOT selects the root (default: \$HOME/.chy). \$CHY_PATH adds
+repositories, colon-separated and searched in order between the
+overlay and the default repo; the first repo carrying a package wins,
+so put your overrides first and treat the default as the fallback.
 EOF
 }
 
@@ -206,12 +209,24 @@ installed_names() { # entries under db/installed, byte-sorted
 }
 
 # recipes
-# overlay/<name>/ shadows recipes/<name>/ as a whole directory, never per file.
-# An invalid overlay fails loudly; it never falls back to the default repo.
-recipe_dir() { # recipe_dir <name>: the overlay dir if present, else the default repo dir
-    rd_d=$CHY_ROOT/overlay/$1
-    [ -d "$rd_d" ] || rd_d=$CHY_ROOT/recipes/$1
-    printf '%s\n' "$rd_d"
+# Repos in search order: the overlay (root-local override), then
+# $CHY_PATH (colon-separated, kiss's KISS_PATH), then the default repo.
+# First match wins wherever a recipe is looked up.  An invalid overlay
+# still fails loudly in recipe_check.
+repo_list() {
+    printf '%s\n' "$CHY_ROOT/overlay"
+    rp_p=${CHY_PATH:-}
+    while [ -n "$rp_p" ]; do
+        case $rp_p in *:*) rp_e=${rp_p%%:*} rp_p=${rp_p#*:} ;; *) rp_e=$rp_p rp_p= ;; esac
+        [ -n "$rp_e" ] && printf '%s\n' "$rp_e"
+    done
+    printf '%s\n' "$CHY_ROOT/recipes"
+}
+
+recipe_dir() { # recipe_dir <name>: the first repo dir holding <name>
+    for rd_d in $(repo_list); do
+        [ -d "$rd_d/$1" ] && { printf '%s\n' "$rd_d/$1"; return 0; }
+    done
 }
 
 # Check the recipe dir and set R_DIR, R_VER, R_REV. Anything invalid
@@ -1611,17 +1626,19 @@ cmd_list() {
 # no matches is still exit 0.
 cmd_search() {
     no_opts "$@"
-    [ "$#" -eq 1 ] || { usage >&2; exit 2; }
-    for cs_d in "$CHY_ROOT/recipes/"* "$CHY_ROOT/overlay/"*; do
+    [ "$#" -eq 1 ] && [ -n "$1" ] || { usage >&2; exit 2; }
+    cs_said=' '
+    for cs_d in $(repo_list); do
         [ -d "$cs_d" ] || continue
-        cs_n=${cs_d##*/}
-        case $cs_n in *"$1"*) ;; *) continue ;; esac
-        # overlay shadows repo: one line per name, the overlay's.
-        [ ! -d "$CHY_ROOT/overlay/$cs_n" ] ||
-            [ "$cs_d" = "$CHY_ROOT/overlay/$cs_n" ] || continue
-        read_version "$cs_d/version"
-        cs_rev=${VQ_REV:-1}
-        printf '%s %s %s\n' "$cs_n" "${VQ_VER:--}" "$cs_rev"
+        for cs_r in "$cs_d/"*; do
+            [ -d "$cs_r" ] || continue
+            cs_n=${cs_r##*/}
+            case $cs_n in *"$1"*) ;; *) continue ;; esac
+            case $cs_said in *" $cs_n "*) continue ;; esac
+            cs_said="$cs_said$cs_n "       # first match wins per name
+            read_version "$cs_r/version"
+            printf '%s %s %s\n' "$cs_n" "${VQ_VER:--}" "${VQ_REV:-1}"
+        done
     done | LC_ALL=C sort
     exit 0
 }

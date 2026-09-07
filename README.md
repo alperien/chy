@@ -25,6 +25,11 @@ of all options.
     duplicate them. install seeds it automatically from the repo's
     provided.suggested.
 
+    repositories: $CHY_PATH adds more, colon-separated, searched in
+    order between the root's overlay/ and the default repo; the first
+    repo carrying a package wins, so your overrides go first and the
+    default repo is the fallback.
+
     recipes carrying `kind binary` and no build file install their single
     checksummed archive directly: the tarball IS the package, layout and
     all, and the digest in the recipe is the whole trust surface.
