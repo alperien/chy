@@ -74,11 +74,6 @@ valid_version() {
     case $1 in ''|*[!A-Za-z0-9._+]*) return 1 ;; *) return 0 ;; esac
 }
 
-valid_sha256() {
-    [ "${#1}" -eq 64 ] || return 1
-    case $1 in *[!0-9a-f]*) return 1 ;; *) return 0 ;; esac
-}
-
 # The root has to be absolute, no whitespace, no . or .. components.
 # Trailing slashes get stripped, anything else is refused at startup.
 bad_root() {
@@ -271,13 +266,13 @@ recipe_check() { # recipe_check <name>
         fail "$1" "sources/checksums line counts differ ($rc_nsrc vs $rc_nsum)"
 
     # Every checksums line has to be a bare lowercase sha256 digest;
-    # the failing line's ordinal names itself.
+    # the failing line's ordinal names itself.  Length then alphabet,
+    # one case: a 64-char run of [0-9a-f] or it isn't a digest.
     rc_bad=$(rc_ln=0; sig_lines "$R_DIR/checksums" | while IFS= read -r rc_line; do
         rc_ln=$((rc_ln + 1))
-        valid_sha256 "$(first_field "$rc_line")" || {
-            printf '%s\n' "$rc_ln"
-            exit 1
-        }
+        rc_sum=$(first_field "$rc_line")
+        case ${#rc_sum} in 64) ;; *) printf '%s\n' "$rc_ln"; exit 1 ;; esac
+        case $rc_sum in *[!0-9a-f]*) printf '%s\n' "$rc_ln"; exit 1 ;; esac
     done) || : # the printed ordinal is the signal, not the exit status
     case $rc_bad in
         '') ;;
@@ -339,25 +334,20 @@ fetch_source() { # fetch_source <name> <sha256> <source line>
     fi
     rm -f "$fs_cache"
     mkdir -p "$CHY_ROOT/cache"
-    fs_rest=$3 fs_got='' fs_any=0
-    while [ -n "$fs_rest" ]; do
-        fs_url=${fs_rest%%[[:space:]]*}
-        if [ "$fs_url" = "$fs_rest" ]; then
-            fs_rest=
-        else
-            fs_rest=${fs_rest#*[[:space:]]}
-        fi
-        [ -n "$fs_url" ] || continue
+    fs_got='' fs_any=0
+    set -f                      # the walk splits data, not globs; restored
+    for fs_url in $3; do        # after the loop (bible: split on IFS)
         # A kiss dest field is a work-dir path, not a mirror URL: the
         # mirror walk ends at it (fetching it would blame the recipe for
         # a path the network can never serve).
         case $fs_url in /*|./*) break ;; esac
         if fetch_url "$1" "$fs_url" "$fs_cache"; then
             fs_any=1 fs_got=$(sha_of "$fs_cache")
-            [ "$fs_got" = "$2" ] && return 0
+            [ "$fs_got" = "$2" ] && { set +f; return 0; }
         fi
         rm -f "$fs_cache"
     done
+    set +f
     # A checksum mismatch and a dead network are different faults; name
     # whichever happened, don't blame the recipe for an outage.
     [ "$fs_any" -eq 1 ] ||
@@ -619,10 +609,13 @@ normalize() { # normalize <name>
     rm -f "$n_bad"
     require "$1" readlink
 
-    # Layout detection, by the same loop-over-paths shape as the check
-    # below (find -quit is not portable; an empty $DEST$CHY_ROOT dir is no
-    # evidence either — make creates the DESTDIR root happily). Every
-    # staged file/symlink is classified into one of two marker files.
+    # Layout detection and the prefix check in one loop (find -quit is
+    # not portable; an empty $DEST$CHY_ROOT dir is no evidence either —
+    # make creates the DESTDIR root happily). Every staged file/symlink
+    # is classified into one of two marker files; a path under neither
+    # root is flagged. A newline in a path splits off a fragment that
+    # can't start with either prefix, so it hits the same flag. Don't
+    # turn this into find -path, you'd lose the newline catch.
     n_ck=$CHY_ROOT/build/norm-chy n_dk=$CHY_ROOT/build/norm-direct
     rm -f "$n_ck" "$n_dk"
     find "$DEST" \( -type f -o -type l \) -print 2>/dev/null |
@@ -630,23 +623,13 @@ normalize() { # normalize <name>
             case $n_p in
                 "$DEST$CHY_ROOT/"*) true >"$n_ck" ;;
                 "$DEST/"*)          true >"$n_dk" ;;
+                *) err "$1" "staged outside the prefix (or a path contains a newline): ${n_p#"$DEST"}"
+                    true >"$n_bad" ;;
             esac
         done
     if [ ! -e "$n_ck" ] && [ ! -e "$n_dk" ]; then
         fail "$1" "build installed nothing"
     fi
-
-    # Every staged path has to resolve under one of the two image roots.
-    # This loop also catches newlines: one in a path splits off a
-    # fragment that can't start with either prefix, so it hits the else
-    # and aborts. Don't turn it into find -path, you'd lose that.
-    find "$DEST" \( -type f -o -type l \) -print | while IFS= read -r n_p; do
-        case $n_p in
-            "$DEST$CHY_ROOT/"*|"$DEST/"*) ;;
-            *) err "$1" "staged outside the prefix (or a path contains a newline): ${n_p#"$DEST"}"
-                true >"$n_bad" ;;
-        esac
-    done
     [ ! -e "$n_bad" ] || fail "$1" "build staged a path outside \$CHY_ROOT or containing a newline"
 
     # registry files every install regenerates and no package can own:
@@ -1618,11 +1601,11 @@ cmd_list() {
     exit "$cl_bad"
 }
 
-# search: recipe names (overlay + repo) containing the pattern as a
-# substring, with the recipe's version and revision (revision defaulting
-# to 1, like every recipe reader). An overlay dir shadows the repo dir of
-# the same name wholesale, so the repo entry is skipped then. A report:
-# no matches is still exit 0.
+# search: recipe names across the repo path (repo_list order) containing
+# the pattern as a substring, with the recipe's version and revision
+# (revision defaulting to 1, like every recipe reader).  Each name is
+# printed once, from the first repo holding it.  A report: no matches is
+# still exit 0.
 cmd_search() {
     no_opts "$@"
     [ "$#" -eq 1 ] || { usage >&2; exit 2; }
