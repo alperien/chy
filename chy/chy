@@ -209,10 +209,9 @@ installed_names() { # entries under db/installed, byte-sorted
 }
 
 # recipes
-# Repos in search order: the overlay (root-local override), then
-# $CHY_PATH (colon-separated, kiss's KISS_PATH), then the default repo.
-# First match wins wherever a recipe is looked up.  An invalid overlay
-# still fails loudly in recipe_check.
+# Repos in search order: the overlay, then $CHY_PATH (colon-separated,
+# kiss's KISS_PATH), then the default repo; first match wins.  An
+# invalid overlay still fails loudly in recipe_check.
 repo_list() {
     printf '%s\n' "$CHY_ROOT/overlay"
     rp_p=${CHY_PATH:-}
@@ -1626,7 +1625,8 @@ cmd_list() {
 # no matches is still exit 0.
 cmd_search() {
     no_opts "$@"
-    [ "$#" -eq 1 ] && [ -n "$1" ] || { usage >&2; exit 2; }
+    [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+    [ -n "$1" ] || { usage >&2; exit 2; }
     cs_said=' '
     for cs_d in $(repo_list); do
         [ -d "$cs_d" ] || continue
